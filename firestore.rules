@@ -1,0 +1,241 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(landlordId) {
+      return isAuthenticated() && request.auth.uid == landlordId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidOptionalString(val, minLen, maxLen) {
+      return val == null || (val is string && val.size() >= minLen && val.size() <= maxLen);
+    }
+
+    function isPositiveNumber(val) {
+      return val is number && val >= 0;
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.size() > 10 && dateStr.size() < 30;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidProperty(data) {
+      return hasOnlyAllowedFields(['landlordId', 'name', 'type', 'address', 'status', 'levels', 'apartmentsCount', 'photoUrl', 'createdAt', 'updatedAt']) &&
+             data.landlordId == request.auth.uid &&
+             isValidString(data.name, 1, 100) &&
+             data.type in ["Maison", "Appartement", "Parcelle", "Immeuble", "Autre"] &&
+             isValidString(data.address, 1, 200) &&
+             (!('status' in data) || data.status in ["Libre", "Occupé", "En rénovation"]) &&
+             (!('levels' in data) || (data.levels == null || isPositiveNumber(data.levels))) &&
+             (!('apartmentsCount' in data) || (data.apartmentsCount == null || isPositiveNumber(data.apartmentsCount))) &&
+             (!('photoUrl' in data) || isValidOptionalString(data.photoUrl, 0, 2000000)) &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidTenant(data) {
+      return hasOnlyAllowedFields(['landlordId', 'propertyId', 'name', 'email', 'phone', 'address', 'entryDate', 'housingType', 'level', 'guaranteeAmount', 'guaranteeStatus', 'monthlyRent', 'photoUrl', 'familyStatus', 'childrenCount', 'cohabitants', 'waterAmount', 'electricityAmount', 'syndicAmount', 'networkAmount', 'cleaningAmount', 'otherAmount', 'idType', 'idNumber', 'createdAt', 'updatedAt', 'userId']) &&
+             isValidString(data.landlordId, 1, 100) &&
+             (!('propertyId' in data) || isValidOptionalString(data.propertyId, 0, 100)) &&
+             isValidString(data.name, 1, 100) &&
+             (!('email' in data) || isValidOptionalString(data.email, 0, 100)) &&
+             isValidString(data.phone, 1, 30) &&
+             (!('address' in data) || isValidOptionalString(data.address, 0, 200)) &&
+             isValidDateString(data.entryDate) &&
+             data.housingType in ["Appartement", "Maison", "Chambre", "Studio", "Boutique", "Immeuble"] &&
+             (!('level' in data) || (data.level == null || isPositiveNumber(data.level))) &&
+             (data.guaranteeAmount is number) &&
+             data.guaranteeStatus in ["Non payée", "Partielle", "Payée"] &&
+             isPositiveNumber(data.monthlyRent) &&
+             (!('photoUrl' in data) || isValidOptionalString(data.photoUrl, 0, 2000000)) &&
+             (!('familyStatus' in data) || data.familyStatus in ["Célibataire", "En couple", "Marié(e)", "Divorcé(e)", "Veuf/Veuve"]) &&
+             (!('childrenCount' in data) || isPositiveNumber(data.childrenCount)) &&
+             (!('cohabitants' in data) || isValidOptionalString(data.cohabitants, 0, 500)) &&
+             (!('idType' in data) || isValidOptionalString(data.idType, 0, 50)) &&
+             (!('idNumber' in data) || isValidOptionalString(data.idNumber, 0, 100)) &&
+             (!('waterAmount' in data) || isPositiveNumber(data.waterAmount)) &&
+             (!('electricityAmount' in data) || isPositiveNumber(data.electricityAmount)) &&
+             (!('syndicAmount' in data) || isPositiveNumber(data.syndicAmount)) &&
+             (!('networkAmount' in data) || isPositiveNumber(data.networkAmount)) &&
+             (!('cleaningAmount' in data) || isPositiveNumber(data.cleaningAmount)) &&
+             (!('otherAmount' in data) || isPositiveNumber(data.otherAmount)) &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidPayment(data) {
+      return hasOnlyAllowedFields(['landlordId', 'tenantId', 'amount', 'date', 'method', 'type', 'notes', 'createdAt']) &&
+             isValidString(data.landlordId, 1, 100) &&
+             isValidString(data.tenantId, 1, 100) &&
+             isValidString(data.method, 1, 100) &&
+             (data.amount is number) &&
+             isValidDateString(data.date) &&
+             data.type in ["Loyer", "Garantie", "Eau", "Électricité", "Avance", "Électricité / Lumière", "Frais syndics", "Internet / Networks", "Ventilation / Climatisation", "Plomberies", "Canalisation", "Dépenses / Réparations", "Frais de travaux", "Autre"] &&
+             (!('notes' in data) || isValidOptionalString(data.notes, 0, 1000)) &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidMaintenanceIssue(data) {
+      return hasOnlyAllowedFields(['title', 'propertyName', 'propertyId', 'tenantName', 'priority', 'landlordId', 'tenantId', 'description', 'status', 'notes', 'photoUrl', 'endDate', 'cost', 'duration', 'createdAt', 'updatedAt', 'tenantResponse']) &&
+             isValidString(data.landlordId, 1, 100) &&
+             isValidString(data.tenantId, 1, 100) &&
+             isValidString(data.description, 1, 2000) &&
+             data.status in ["En attente", "En cours", "Résolu"] &&
+             (!('title' in data) || isValidString(data.title, 1, 200)) &&
+             (!('priority' in data) || isValidString(data.priority, 1, 50)) &&
+             (!('tenantName' in data) || isValidString(data.tenantName, 1, 150)) &&
+             (!('propertyName' in data) || isValidOptionalString(data.propertyName, 0, 150)) &&
+             (!('propertyId' in data) || isValidOptionalString(data.propertyId, 0, 100)) &&
+             (!('notes' in data) || isValidOptionalString(data.notes, 0, 1000)) &&
+             (!('photoUrl' in data) || isValidOptionalString(data.photoUrl, 0, 2000000)) &&
+             (!('endDate' in data) || isValidDateString(data.endDate)) &&
+             (!('cost' in data) || isPositiveNumber(data.cost)) &&
+             (!('tenantResponse' in data) || isValidOptionalString(data.tenantResponse, 0, 1500)) &&
+             (!('duration' in data) || isValidOptionalString(data.duration, 0, 100)) &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidExpense(data) {
+      return hasOnlyAllowedFields(['landlordId', 'propertyId', 'tenantId', 'amount', 'category', 'date', 'description', 'createdAt']) &&
+             isValidString(data.landlordId, 1, 100) &&
+             (!('propertyId' in data) || isValidOptionalString(data.propertyId, 0, 100)) &&
+             (!('tenantId' in data) || isValidOptionalString(data.tenantId, 0, 100)) &&
+             isPositiveNumber(data.amount) &&
+             isValidString(data.category, 1, 100) &&
+             isValidDateString(data.date) &&
+             (!('description' in data) || isValidOptionalString(data.description, 0, 1000)) &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidContract(data) {
+      return hasOnlyAllowedFields(['landlordId', 'tenantId', 'propertyId', 'startDate', 'endDate', 'rentAmount', 'depositAmount', 'clauses', 'status', 'attachmentUrl', 'createdAt', 'updatedAt']) &&
+             data.landlordId == request.auth.uid &&
+             isValidString(data.tenantId, 1, 100) &&
+             isValidString(data.propertyId, 1, 100) &&
+             isValidDateString(data.startDate) &&
+             (!('endDate' in data) || isValidOptionalString(data.endDate, 0, 30)) &&
+             isPositiveNumber(data.rentAmount) &&
+             isPositiveNumber(data.depositAmount) &&
+             (!('clauses' in data) || isValidOptionalString(data.clauses, 0, 10000)) &&
+             data.status in ["Actif", "Expiré", "Résilié"] &&
+             (!('attachmentUrl' in data) || isValidOptionalString(data.attachmentUrl, 0, 20000000)) &&
+             isValidDateString(data.createdAt) &&
+             isValidDateString(data.updatedAt);
+    }
+
+    function isValidRecurringPayment(data) {
+      return hasOnlyAllowedFields(['landlordId', 'tenantId', 'amount', 'frequency', 'startDate', 'method', 'type', 'notes', 'status', 'createdAt']) &&
+             data.landlordId == request.auth.uid &&
+             isValidString(data.tenantId, 1, 100) &&
+             isPositiveNumber(data.amount) &&
+             data.frequency in ["Hebdomadaire", "Mensuelle", "Trimestrielle", "Annuelle"] &&
+             isValidDateString(data.startDate) &&
+             isValidString(data.method, 1, 100) &&
+             isValidString(data.type, 1, 100) &&
+             (!('notes' in data) || isValidOptionalString(data.notes, 0, 1000)) &&
+             data.status in ["Actif", "Inactif"] &&
+             isValidDateString(data.createdAt);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      
+      match /loginHistory/{historyId} {
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    match /properties/{propertyId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidProperty(request.resource.data);
+      allow update: if isOwner(resource.data.landlordId) && 
+                       isValidProperty(request.resource.data) &&
+                       request.resource.data.landlordId == resource.data.landlordId &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.landlordId);
+    }
+
+    match /contracts/{contractId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isAuthenticated() && isValidContract(request.resource.data);
+      allow update: if isOwner(resource.data.landlordId) && 
+                       isValidContract(request.resource.data) &&
+                       request.resource.data.landlordId == resource.data.landlordId &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.landlordId);
+    }
+
+    match /tenants/{tenantId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidTenant(request.resource.data);
+      allow update: if isValidTenant(request.resource.data) &&
+                       request.resource.data.landlordId == resource.data.landlordId &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.landlordId);
+    }
+
+    match /payments/{paymentId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidPayment(request.resource.data);
+      allow update: if isValidPayment(request.resource.data) &&
+                       request.resource.data.landlordId == resource.data.landlordId &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAuthenticated() && isOwner(resource.data.landlordId);
+    }
+
+    match /maintenance/{issueId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidMaintenanceIssue(request.resource.data);
+      allow update: if isValidMaintenanceIssue(request.resource.data) &&
+                       request.resource.data.landlordId == resource.data.landlordId &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.landlordId);
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isValidExpense(request.resource.data);
+      allow update: if isValidExpense(request.resource.data) &&
+                       request.resource.data.landlordId == resource.data.landlordId &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.landlordId);
+    }
+  }
+}

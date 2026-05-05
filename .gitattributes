@@ -1,0 +1,5 @@
+*.json linguist-generated=false
+package-lock.json linguist-generated=true
+firebase-blueprint.json linguist-generated=true
+dist/* linguist-generated=true
+build/* linguist-generated=true

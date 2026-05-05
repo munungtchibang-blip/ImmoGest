@@ -1,0 +1,251 @@
+{
+  "entities": {
+    "Property": {
+      "title": "Property",
+      "description": "A real estate property.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["Maison", "Appartement", "Parcelle", "Immeuble", "Autre"] },
+        "address": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "name", "type", "address", "createdAt", "updatedAt"]
+    },
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Represents a tenant renting a property.",
+      "type": "object",
+      "properties": {
+        "landlordId": {
+          "type": "string",
+          "description": "The UID of the landlord who owns this record."
+        },
+        "propertyId": {
+          "type": "string",
+          "description": "Optional ID of the property."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the tenant."
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone number of the tenant."
+        },
+        "address": {
+          "type": "string",
+          "description": "Address or unit number of the rented property."
+        },
+        "entryDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date the tenant moved in (ISO string)."
+        },
+        "housingType": {
+          "type": "string",
+          "enum": ["Appartement", "Maison", "Chambre", "Studio", "Boutique"],
+          "description": "Type of housing."
+        },
+        "guaranteeAmount": {
+          "type": "number",
+          "description": "Total amount of the guarantee/deposit required."
+        },
+        "guaranteeStatus": {
+          "type": "string",
+          "enum": ["Non payée", "Partielle", "Payée"],
+          "description": "Status of the guarantee payment."
+        },
+        "monthlyRent": {
+          "type": "number",
+          "description": "Monthly rent amount."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional URL to a photo of the tenant."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["landlordId", "name", "phone", "address", "entryDate", "housingType", "guaranteeAmount", "guaranteeStatus", "monthlyRent", "createdAt", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Represents a payment made by a tenant.",
+      "type": "object",
+      "properties": {
+        "landlordId": {
+          "type": "string",
+          "description": "The UID of the landlord who owns this record."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The ID of the tenant who made the payment."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Amount paid."
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Date of the payment (ISO string)."
+        },
+        "method": {
+          "type": "string",
+          "enum": ["Cash", "Mobile Money", "Banque", "Déduction Garantie"],
+          "description": "Payment method."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["Loyer", "Garantie"],
+          "description": "What the payment is for."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes or comments about the payment."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["landlordId", "tenantId", "amount", "date", "method", "type", "createdAt"]
+    },
+    "MaintenanceIssue": {
+      "title": "MaintenanceIssue",
+      "description": "Represents a maintenance issue reported for a property.",
+      "type": "object",
+      "properties": {
+        "landlordId": {
+          "type": "string",
+          "description": "The UID of the landlord who owns this record."
+        },
+        "tenantId": {
+          "type": "string",
+          "description": "The ID of the tenant associated with the property."
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the issue (e.g., water leak)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["En attente", "En cours", "Résolu"],
+          "description": "Current status of the issue."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes from the landlord."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional URL to a photo of the issue."
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional date when the issue was resolved."
+        },
+        "cost": {
+          "type": "number",
+          "description": "Optional cost of the repair."
+        },
+        "duration": {
+          "type": "string",
+          "description": "Optional duration of the repair work."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["landlordId", "tenantId", "description", "status", "createdAt", "updatedAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "A property-related expense.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string", "enum": ["Taxes", "Assurance", "Entretien", "Autre"] },
+        "date": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "amount", "category", "date", "createdAt"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "A lease contract.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "rentAmount": { "type": "number" },
+        "depositAmount": { "type": "number" },
+        "clauses": { "type": "string" },
+        "status": { "type": "string", "enum": ["Actif", "Expiré", "Résilié"] },
+        "attachmentUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "tenantId", "propertyId", "startDate", "rentAmount", "depositAmount", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/tenants/{tenantId}": {
+      "schema": {
+        "$ref": "#/entities/Tenant"
+      },
+      "description": "Collection of tenants managed by landlords."
+    },
+    "/payments/{paymentId}": {
+      "schema": {
+        "$ref": "#/entities/Payment"
+      },
+      "description": "Collection of payments made by tenants."
+    },
+    "/maintenance/{issueId}": {
+      "schema": {
+        "$ref": "#/entities/MaintenanceIssue"
+      },
+      "description": "Collection of maintenance issues."
+    },
+    "/expenses/{expenseId}": {
+      "schema": {
+        "$ref": "#/entities/Expense"
+      },
+      "description": "Collection of expenses."
+    },
+    "/properties/{propertyId}": {
+      "schema": {
+        "$ref": "#/entities/Property"
+      },
+      "description": "Collection of properties."
+    },
+    "/contracts/{contractId}": {
+      "schema": {
+        "$ref": "#/entities/Contract"
+      },
+      "description": "Collection of lease contracts."
+    }
+  }
+}
