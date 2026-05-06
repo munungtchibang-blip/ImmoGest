@@ -38,7 +38,7 @@ import { PublicPay } from './pages/PublicPay';
 import { Contracts } from './pages/Contracts';
 import { Logo } from './components/Logo';
 
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut, reload, applyActionCode } from 'firebase/auth';
 
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -46,6 +46,64 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [isRegister, setIsRegister] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [verificationRequired, setVerificationRequired] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+
+  // Polling for email verification
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (verificationRequired && auth.currentUser) {
+      interval = setInterval(async () => {
+        if (auth.currentUser) {
+          try {
+            await reload(auth.currentUser);
+            if (auth.currentUser.emailVerified) {
+              setVerificationRequired(false);
+              onSuccess();
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [verificationRequired, onSuccess]);
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationCode || loading) return;
+    setLoading(true);
+    try {
+      let code = verificationCode;
+      // Extract oobCode if they pasted the full URL
+      if (code.includes('oobCode=')) {
+        try {
+          const url = new URL(code);
+          code = url.searchParams.get('oobCode') || code;
+        } catch (_) {}
+      }
+      
+      await applyActionCode(auth, code);
+      if (auth.currentUser) {
+        await reload(auth.currentUser);
+        if (auth.currentUser.emailVerified) {
+          toast.success("Email vérifié avec succès !");
+          setVerificationRequired(false);
+          onSuccess();
+        }
+      } else {
+        // If they are not logged in but applied the code, maybe let them login now
+        toast.success("Email vérifié avec succès ! Veuillez vous connecter.");
+        setVerificationRequired(false);
+        setIsRegister(false);
+      }
+    } catch (error: any) {
+      toast.error(`Le lien de validation est invalide ou a expiré.`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,15 +114,15 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       if (isRegister) {
         res = await createUserWithEmailAndPassword(auth, email, password);
         await sendEmailVerification(res.user);
-        toast.success("Un email de vérification a été envoyé. Veuillez vérifier votre boîte mail avant de vous connecter.");
-        setIsRegister(false);
-        // Automatically sign out so they have to login after verifying
-        await signOut(auth);
+        toast.success("Un lien de validation a été envoyé. Veuillez vérifier votre boîte mail.");
+        // We do not signOut here so that reload() polling works
+        setVerificationRequired(true);
       } else {
         res = await signInWithEmailAndPassword(auth, email, password);
         if (!res.user.emailVerified) {
-          toast.error("Veuillez vérifier votre adresse email avant de vous connecter.");
-          await signOut(auth);
+          toast.error("Veuillez vérifier votre adresse email avant d'accéder à l'application.");
+          await sendEmailVerification(res.user);
+          setVerificationRequired(true);
           setLoading(false);
           return;
         }
@@ -149,7 +207,76 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Connectez-vous pour accéder à votre espace de gestion.</p>
       </div>
       
-      {authMode === 'email' ? (
+      {verificationRequired ? (
+        <form onSubmit={handleVerifyCode} className="space-y-4 text-left">
+          <div className="bg-yellow-50 dark:bg-yellow-900/30 p-4 rounded-xl mb-4 border border-yellow-200 dark:border-yellow-800">
+            <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-1">
+              Vérification requise
+            </h3>
+            <p className="text-xs text-yellow-700 dark:text-yellow-300">
+              Un email de vérification a été envoyé à <strong className="font-semibold">{email}</strong>. 
+              Veuillez cliquer sur le lien dans l'email, ou coller le lien/code ci-dessous.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Code ou lien de validation</label>
+            <input 
+              type="text" 
+              value={verificationCode}
+              onChange={e => setVerificationCode(e.target.value)}
+              placeholder="Collez le lien ici..."
+              className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+          <button 
+            type="submit"
+            disabled={loading || !verificationCode}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
+          >
+            Confirmer l'enregistrement
+          </button>
+          
+          <div className="mt-4 flex flex-col items-center gap-4">
+             <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                En attente de validation via le lien...
+             </div>
+             
+             <button
+               type="button"
+               disabled={loading}
+               onClick={async () => {
+                 if (auth.currentUser) {
+                   setLoading(true);
+                   try {
+                     await sendEmailVerification(auth.currentUser);
+                     toast.success("Nouvel email envoyé !");
+                   } catch(e: any) {
+                     toast.error("Erreur, veuillez réessayer plus tard.");
+                   } finally {
+                     setLoading(false);
+                   }
+                 }
+               }}
+               className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+             >
+               Renvoyer l'email
+             </button>
+             
+             <button
+               type="button"
+               disabled={loading}
+               onClick={async () => {
+                 await signOut(auth);
+                 setVerificationRequired(false);
+               }}
+               className="text-sm text-gray-500 hover:text-gray-700"
+             >
+               Annuler
+             </button>
+          </div>
+        </form>
+      ) : authMode === 'email' ? (
         <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
