@@ -38,105 +38,12 @@ import { PublicPay } from './pages/PublicPay';
 import { Contracts } from './pages/Contracts';
 import { Logo } from './components/Logo';
 
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [loading, setLoading] = useState(false);
-  const [authMode, setAuthMode] = useState<'main' | 'email' | 'phone'>('main');
-  const [isRegister, setIsRegister] = useState(false);
-  const [phoneStep, setPhoneStep] = useState<'input' | 'otp'>('input');
-  const [phone, setPhone] = useState('+33');
-  const [otp, setOtp] = useState('');
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-
-  useEffect(() => {
-    if (authMode === 'phone') {
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          size: 'invisible',
-        });
-      }
-    }
-    
-    return () => {
-      // If we exit phone auth mode OR unmount, clear the recaptcha to avoid stale references
-      if (window.recaptchaVerifier) {
-        try {
-          window.recaptchaVerifier.clear();
-        } catch(_) {
-          // ignore
-        }
-        window.recaptchaVerifier = null;
-      }
-    };
-  }, [authMode]);
-
-  const handlePhoneSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (loading) return;
-    setLoading(true);
-    try {
-      const appVerifier = window.recaptchaVerifier;
-      const result = await signInWithPhoneNumber(auth, phone, appVerifier);
-      setConfirmationResult(result);
-      setPhoneStep('otp');
-      toast.success('Code OTP envoyé !');
-    } catch (error: any) {
-      console.error(error);
-      if (error.code === 'auth/operation-not-allowed') {
-        toast.error("Connexion par téléphone non autorisée. Veuillez l'activer dans la console Firebase (Authentication > Sign-in method).", { duration: 6000 });
-      } else {
-        toast.error(`Erreur: ${error.message || "Impossible d'envoyer le code"}`);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!confirmationResult || loading) return;
-    setLoading(true);
-    try {
-      const result = await confirmationResult.confirm(otp);
-      const u = result.user;
-      
-      const userDoc = await getDoc(doc(db, 'users', u.uid));
-      if (!userDoc.exists()) {
-          // Verify if the phone matches any tenant
-          const q = query(collection(db, 'tenants'), where('phone', '==', phone));
-          const snaps = await getDocs(q);
-          
-          if (!snaps.empty) {
-            const tid = snaps.docs[0].id;
-            await setDoc(doc(db, 'users', u.uid), {
-              name: 'Locataire',
-               phone: phone,
-               email: '',
-               googleEmail: '',
-               role: 'tenant',
-               tenantId: tid,
-               createdAt: new Date().toISOString()
-            });
-          } else {
-            await setDoc(doc(db, 'users', u.uid), {
-              name: 'Utilisateur',
-              phone: phone,
-              email: '',
-              googleEmail: '',
-              role: 'landlord',
-              createdAt: new Date().toISOString()
-            });
-          }
-      }
-      onSuccess();
-    } catch (error: any) {
-      console.error(error);
-      toast.error(`Erreur: ${error.message || "Code OTP invalide"}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [authMode, setAuthMode] = useState<'main' | 'email'>('main');
+  const [isRegister, setIsRegister] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -202,7 +109,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
              method: 'google',
              userAgent: navigator.userAgent
            });
-           toast.success("Nouvelle connexion détectée sur votre compte.", { position: 'bottom-center' });
+           toast.success("Nouvelle connexion détectée.", { position: 'bottom-center' });
          } catch (err) {
            console.error("Login history error", err);
          }
@@ -231,72 +138,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Connectez-vous pour accéder à votre espace de gestion.</p>
       </div>
       
-      {authMode === 'phone' ? (
-        <div className="space-y-4 text-left">
-          {phoneStep === 'input' ? (
-            <form onSubmit={handlePhoneSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Numéro de téléphone</label>
-                <input 
-                  type="tel" 
-                  required
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  placeholder="+33612345678"
-                  className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div id="recaptcha-container"></div>
-              <button 
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
-              >
-                Envoyer le code OTP
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={verifyOtp} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Code OTP</label>
-                <input 
-                  type="text" 
-                  required
-                  value={otp}
-                  onChange={e => setOtp(e.target.value)}
-                  placeholder="123456"
-                  className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none text-center tracking-widest font-mono text-xl"
-                />
-              </div>
-              <button 
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50"
-              >
-                Vérifier
-              </button>
-              <button
-                type="button"
-                onClick={handlePhoneSubmit}
-                disabled={loading}
-                className="w-full text-center text-sm text-blue-600 hover:text-blue-700 dark:hover:text-blue-400"
-              >
-                Renvoyer le code
-              </button>
-            </form>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMode('main');
-              setPhoneStep('input');
-            }}
-            className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-          >
-            Retour
-          </button>
-        </div>
-      ) : authMode === 'email' ? (
+      {authMode === 'email' ? (
         <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
@@ -338,7 +180,6 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
               type="button"
               onClick={() => {
                 setAuthMode('main');
-                setIsRegister(false);
               }}
               className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             >
@@ -349,19 +190,6 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       ) : (
         <>
           <button
-            onClick={() => setAuthMode('phone')}
-            className="w-full py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium transition-colors"
-          >
-            Connexion par Téléphone (SMS)
-          </button>
-          
-          <div className="relative flex items-center py-2">
-            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
-            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">Ou</span>
-            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
-          </div>
-
-          <button
             disabled={loading}
             onClick={handleGoogleLogin}
             className="w-full flex items-center justify-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-white py-3 px-4 rounded-xl font-medium transition-all shadow-sm hover:shadow-md disabled:opacity-50"
@@ -370,15 +198,24 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             Continuer avec Google
           </button>
           
+          <div className="relative flex items-center py-2">
+            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+            <span className="flex-shrink-0 mx-4 text-gray-400 text-sm">Ou pour les nouveaux utilisateurs</span>
+            <div className="flex-grow border-t border-gray-200 dark:border-gray-700"></div>
+          </div>
+          
           <button
-            onClick={() => setAuthMode('email')}
-            className="w-full py-3 mt-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-xl font-medium transition-colors"
+            onClick={() => {
+              setAuthMode('email');
+              setIsRegister(true);
+            }}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors"
           >
-            Connexion par Email
+            Créer un compte par Email
           </button>
 
-          <p className="text-xs text-center text-gray-500 mt-2">
-            Utilisez l'une de ces méthodes pour accéder à votre espace de gestion.
+          <p className="text-xs text-center text-gray-500 mt-4">
+            Utilisez Google si vous avez déjà un compte, ou créez-en un nouveau par email.
           </p>
         </>
       )}
