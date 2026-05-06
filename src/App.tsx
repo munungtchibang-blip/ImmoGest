@@ -371,6 +371,11 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
+        if (!currentUser.emailVerified) {
+          setIsAuthorized(false);
+          setLoading(false);
+          return;
+        }
         setUser(currentUser);
         // Do not immediately authorize until role is loaded
         
