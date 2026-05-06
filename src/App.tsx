@@ -38,7 +38,7 @@ import { PublicPay } from './pages/PublicPay';
 import { Contracts } from './pages/Contracts';
 import { Logo } from './components/Logo';
 
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
 
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -55,11 +55,22 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       let res;
       if (isRegister) {
         res = await createUserWithEmailAndPassword(auth, email, password);
+        await sendEmailVerification(res.user);
+        toast.success("Un email de vérification a été envoyé. Veuillez vérifier votre boîte mail avant de vous connecter.");
+        setIsRegister(false);
+        // Automatically sign out so they have to login after verifying
+        await signOut(auth);
       } else {
         res = await signInWithEmailAndPassword(auth, email, password);
-      }
-      if (res && res.user) {
-        onSuccess();
+        if (!res.user.emailVerified) {
+          toast.error("Veuillez vérifier votre adresse email avant de vous connecter.");
+          await signOut(auth);
+          setLoading(false);
+          return;
+        }
+        if (res && res.user) {
+          onSuccess();
+        }
       }
     } catch (e: any) {
       if (e.code === 'auth/operation-not-allowed') {
