@@ -113,15 +113,27 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       let res;
       if (isRegister) {
         res = await createUserWithEmailAndPassword(auth, email, password);
-        await sendEmailVerification(res.user);
-        toast.success("Un lien de validation a été envoyé. Veuillez vérifier votre boîte mail.");
+        try {
+          auth.languageCode = 'fr';
+          await sendEmailVerification(res.user);
+          toast.success("Un lien de validation a été envoyé. Pensez à vérifier vos SPAMS.");
+        } catch (mailError: any) {
+          console.error("Erreur d'envoi d'email :", mailError);
+          toast.error("L'email de validation n'a pas pu être envoyé. " + mailError.message);
+        }
         // We do not signOut here so that reload() polling works
         setVerificationRequired(true);
       } else {
         res = await signInWithEmailAndPassword(auth, email, password);
         if (!res.user.emailVerified) {
           toast.error("Veuillez vérifier votre adresse email avant d'accéder à l'application.");
-          await sendEmailVerification(res.user);
+          try {
+            auth.languageCode = 'fr';
+            await sendEmailVerification(res.user);
+            toast.success("Un nouveau lien a été envoyé. Vérifiez vos SPAMS.");
+          } catch (mailError: any) {
+             console.error("Erreur d'envoi", mailError);
+          }
           setVerificationRequired(true);
           setLoading(false);
           return;
@@ -249,8 +261,9 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                  if (auth.currentUser) {
                    setLoading(true);
                    try {
+                     auth.languageCode = 'fr';
                      await sendEmailVerification(auth.currentUser);
-                     toast.success("Nouvel email envoyé !");
+                     toast.success("Nouvel email envoyé ! Vérifiez vos SPAMS.");
                    } catch(e: any) {
                      toast.error("Erreur, veuillez réessayer plus tard.");
                    } finally {
@@ -371,7 +384,10 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        if (!currentUser.emailVerified) {
+        // Only require email verification for accounts using password authentication.
+        // Google accounts are considered verified by the provider.
+        const isPasswordProvider = currentUser.providerData.some(p => p.providerId === 'password');
+        if (isPasswordProvider && !currentUser.emailVerified) {
           setIsAuthorized(false);
           setLoading(false);
           return;
