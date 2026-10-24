@@ -257,5 +257,11 @@ service cloud.firestore {
       allow update: if true;
       allow delete: if isAuthenticated();
     }
+
+    match /app_errors/{errorId} {
+      allow read: if isAuthenticated();
+      allow create: if true;
+      allow update, delete: if isAuthenticated();
+    }
   }
 }

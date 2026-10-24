@@ -24,20 +24,32 @@ import './lib/i18n';
 import toast, { Toaster } from 'react-hot-toast';
 import { Layout } from './components/Layout';
 import { SubscriptionProvider } from './context/SubscriptionContext';
-import { Dashboard } from './pages/Dashboard';
-import { Tenants } from './pages/Tenants';
-import { TenantDetail } from './pages/TenantDetail';
-import { Payments } from './pages/Payments';
-import { Maintenance } from './pages/Maintenance';
-import { Expenses } from './pages/Expenses';
-import { Calendar } from './pages/Calendar';
-import { Properties } from './pages/Properties';
-import { PropertyDetail } from './pages/PropertyDetail';
-import { Reports } from './pages/Reports';
-import { Settings } from './pages/Settings';
-import { PublicPay } from './pages/PublicPay';
-import { Contracts } from './pages/Contracts';
 import { Logo } from './components/Logo';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Lazy loading route components for faster initial load
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Tenants = React.lazy(() => import('./pages/Tenants').then(m => ({ default: m.Tenants })));
+const TenantDetail = React.lazy(() => import('./pages/TenantDetail').then(m => ({ default: m.TenantDetail })));
+const Payments = React.lazy(() => import('./pages/Payments').then(m => ({ default: m.Payments })));
+const Maintenance = React.lazy(() => import('./pages/Maintenance').then(m => ({ default: m.Maintenance })));
+const Expenses = React.lazy(() => import('./pages/Expenses').then(m => ({ default: m.Expenses })));
+const Calendar = React.lazy(() => import('./pages/Calendar').then(m => ({ default: m.Calendar })));
+const Properties = React.lazy(() => import('./pages/Properties').then(m => ({ default: m.Properties })));
+const PropertyDetail = React.lazy(() => import('./pages/PropertyDetail').then(m => ({ default: m.PropertyDetail })));
+const Reports = React.lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const PublicPay = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
+const Contracts = React.lazy(() => import('./pages/Contracts').then(m => ({ default: m.Contracts })));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="min-h-[50vh] flex flex-col items-center justify-center p-8 space-y-3">
+      <div className="w-10 h-10 border-4 border-blue-600/30 border-t-blue-600 rounded-full animate-spin"></div>
+      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Chargement optimisé...</p>
+    </div>
+  );
+}
 
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut, reload, applyActionCode } from 'firebase/auth';
 
@@ -550,40 +562,48 @@ export default function App() {
 
   if (role === 'tenant') {
     return (
-      <BrowserRouter>
-        <Toaster />
-        <Routes>
-          <Route path="/" element={<PublicPay tenantId={tenantId || undefined} />} />
-          <Route path="/pay/:id" element={<PublicPay tenantId={tenantId || undefined} />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Toaster />
+          <React.Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+              <Route path="/" element={<PublicPay tenantId={tenantId || undefined} />} />
+              <Route path="/pay/:id" element={<PublicPay tenantId={tenantId || undefined} />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </React.Suspense>
+        </BrowserRouter>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <BrowserRouter>
-      <SubscriptionProvider>
-        <Toaster />
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="properties" element={<Properties />} />
-            <Route path="properties/:id" element={<PropertyDetail />} />
-            <Route path="calendar" element={<Calendar />} />
-            <Route path="tenants" element={<Tenants />} />
-            <Route path="tenants/:id" element={<TenantDetail />} />
-            <Route path="payments" element={<Payments />} />
-            <Route path="expenses" element={<Expenses />} />
-            <Route path="maintenance" element={<Maintenance />} />
-            <Route path="contracts" element={<Contracts />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-          <Route path="/pay/:id" element={<PublicPay />} />
-        </Routes>
-      </SubscriptionProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <SubscriptionProvider>
+          <Toaster />
+          <React.Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route index element={<Dashboard />} />
+                <Route path="properties" element={<Properties />} />
+                <Route path="properties/:id" element={<PropertyDetail />} />
+                <Route path="calendar" element={<Calendar />} />
+                <Route path="tenants" element={<Tenants />} />
+                <Route path="tenants/:id" element={<TenantDetail />} />
+                <Route path="payments" element={<Payments />} />
+                <Route path="expenses" element={<Expenses />} />
+                <Route path="maintenance" element={<Maintenance />} />
+                <Route path="contracts" element={<Contracts />} />
+                <Route path="reports" element={<Reports />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
+              <Route path="/pay/:id" element={<PublicPay />} />
+            </Routes>
+          </React.Suspense>
+        </SubscriptionProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

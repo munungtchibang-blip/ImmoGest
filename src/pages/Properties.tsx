@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Building2, Plus, ArrowLeft, Trash2, Home, Sparkles, Lock, MapPin, Users, DollarSign } from 'lucide-react';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { Building2, Plus, ArrowLeft, Trash2, Home, Sparkles, ChevronRight } from 'lucide-react';
 import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
@@ -113,12 +111,44 @@ export function Properties() {
             }
             setShowAddForm(true);
           }}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs self-start sm:self-auto"
+          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs self-start sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           {t('Nouveau Bien')}
         </button>
       </div>
+
+      {/* PRO RECOMMENDATION BANNER FOR LANDLORDS WITH 1+ PROPERTY */}
+      {properties.length >= 1 && subscription.tierId !== 'pro' && subscription.tierId !== 'vip' && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white shadow-md border border-blue-700/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center shrink-0 border border-amber-400/30">
+              <Sparkles className="w-5 h-5 text-amber-300" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400 text-gray-950">
+                  Recommandation Propriétaire Pro
+                </span>
+                <span className="text-xs text-blue-200">1+ Bien Enregistré</span>
+              </div>
+              <p className="text-sm font-bold text-white">
+                Félicitations pour votre bien enregistré ! Passez au Forfait Pro
+              </p>
+              <p className="text-xs text-blue-100/90 max-w-xl leading-relaxed">
+                Vous gérez déjà un bien immobilier sur ImmoGest. Débloquez la gestion multi-biens illimitée, les alertes d'impayés et la comptabilité automatisée pour seulement 25 $/mois.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => openSubscriptionModal('pro')}
+            className="py-2.5 px-4 bg-white hover:bg-amber-50 text-indigo-950 font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+          >
+            <span>Passer à l'Abonnement Pro</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="animate-pulse space-y-3">

@@ -10,17 +10,13 @@ import {
   Calculator, 
   Wrench, 
   X, 
-  ShieldCheck, 
   Home, 
-  Droplet, 
-  Zap, 
   LayoutDashboard, 
   PieChart, 
   Building2, 
   ArrowUpRight, 
   Sparkles,
-  CheckCircle2,
-  Lock
+  CheckCircle2
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -52,11 +48,7 @@ export function Dashboard() {
 
   // Modals state
   const [showLateModal, setShowLateModal] = useState(false);
-  const [showExpectedModal, setShowExpectedModal] = useState(false);
   const [showMonthlyModal, setShowMonthlyModal] = useState(false);
-  const [showWaterModal, setShowWaterModal] = useState(false);
-  const [showElecModal, setShowElecModal] = useState(false);
-  const [showGuaranteeModal, setShowGuaranteeModal] = useState(false);
   const [showUnoccupiedModal, setShowUnoccupiedModal] = useState(false);
   const [hiddenNotifications, setHiddenNotifications] = useState<string[]>([]);
 
