@@ -2,16 +2,46 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDocs, updateDoc, setDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Plus, Search, User, MapPin, Phone, ArrowLeft, Trash2 } from 'lucide-react';
+import { 
+  Plus, 
+  Search, 
+  User, 
+  MapPin, 
+  Phone, 
+  ArrowLeft, 
+  Trash2, 
+  Sparkles, 
+  Lock, 
+  MessageCircle, 
+  Mail, 
+  Copy, 
+  Check, 
+  ShieldCheck,
+  X
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { initializeApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { useSubscription } from '../context/SubscriptionContext';
+
+interface TenantDispatchInfo {
+  tenantId: string;
+  name: string;
+  phone: string;
+  email: string;
+}
 
 export function Tenants() {
+  const { subscription, openSubscriptionModal } = useSubscription();
   const [tenants, setTenants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [tenantToDelete, setTenantToDelete] = useState<string | null>(null);
+  const [tenantDispatch, setTenantDispatch] = useState<TenantDispatchInfo | null>(null);
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -53,6 +83,18 @@ export function Tenants() {
     }
   };
 
+  // Rule check: 2 or more tenants require Pro
+  const isLimitReached = tenants.length >= 2 && subscription.tierId !== 'pro' && subscription.tierId !== 'vip';
+
+  const handleAddTenantClick = () => {
+    if (isLimitReached) {
+      toast.error("Limite atteinte (2 locataires). Veuillez passer à l'abonnement Pro (29 $/mois) pour ajouter d'autres locataires.");
+      openSubscriptionModal('pro');
+      return;
+    }
+    setShowAddForm(true);
+  };
+
   const uniqueCategories = Array.from(new Set(tenants.map(t => t.housingType).filter(Boolean)));
 
   const filteredTenants = tenants.filter(t => {
@@ -61,39 +103,73 @@ export function Tenants() {
       (t.address?.toLowerCase() || '').includes(search.toLowerCase());
       
     const matchesFilter = filterType === 'All' || t.housingType === filterType;
-    
     return matchesSearch && matchesFilter;
   });
 
   return (
-    <div className="space-y-6">
-      <Link to="/" className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-all group font-medium">
-        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Retour au tableau de bord
+    <div className="space-y-5">
+      <Link to="/" className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl shadow-xs border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-all group font-medium text-xs sm:text-sm">
+        <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" /> Retour au tableau de bord
       </Link>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">Locataires</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">Gérez vos locataires et leurs contrats.</p>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">Locataires</h1>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+              {tenants.length} actif{tenants.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-0.5 transition-colors">
+            Gérez vos locataires, contrats et accès aux quittances.
+          </p>
         </div>
+
         <button
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors"
+          onClick={handleAddTenantClick}
+          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-xs self-start sm:self-auto"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4" />
           Nouveau Locataire
         </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Pro Warning Banner if reached 2 tenants */}
+      {isLimitReached && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800/50 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-950 dark:text-amber-200">
+                Limite de 2 locataires atteinte sur votre forfait {subscription.tierId}
+              </p>
+              <p className="text-xs text-amber-800 dark:text-amber-300">
+                Passez à l'abonnement Professionnel (Recommandé) pour enregistrer un nombre illimité de locataires et biens.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => openSubscriptionModal('pro')}
+            className="shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-xs transition-colors"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Débloquer Pro
+          </button>
+        </div>
+      )}
+
+      {/* Search & Category Filter */}
+      <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
-            placeholder="Rechercher un locataire ou une adresse..."
+            placeholder="Rechercher par nom, adresse ou téléphone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-gray-900 dark:text-white"
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700/80 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-xs sm:text-sm text-gray-900 dark:text-white"
           />
         </div>
         
@@ -101,7 +177,7 @@ export function Tenants() {
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white transition-colors min-w-[150px]"
+            className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700/80 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm text-gray-900 dark:text-white transition-colors min-w-[140px]"
           >
             <option value="All">Tous les types</option>
             {uniqueCategories.map(cat => (
@@ -111,91 +187,150 @@ export function Tenants() {
         )}
       </div>
 
+      {/* Compact List Layout (Takes less vertical space) */}
       {loading ? (
-        <div className="animate-pulse space-y-4">
-          {[1,2,3].map(i => <div key={i} className="h-24 bg-gray-200 rounded-xl"></div>)}
+        <div className="animate-pulse space-y-3">
+          {[1,2,3,4].map(i => <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2.5">
           {filteredTenants.map(tenant => (
-            <Link key={tenant.id} to={`/tenants/${tenant.id}`} className="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-500 transition-all group relative overflow-hidden">
-              <div className="flex items-start gap-4">
+            <div
+              key={tenant.id}
+              className="bg-white dark:bg-gray-800 p-3.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group relative"
+            >
+              <div className="flex items-center gap-3.5 min-w-0 flex-1">
                 {tenant.photoUrl ? (
-                  <img src={tenant.photoUrl} alt={tenant.name} className="w-14 h-14 rounded-full object-cover shrink-0 border-2 border-white dark:border-gray-800 shadow-sm" referrerPolicy="no-referrer" />
+                  <img
+                    src={tenant.photoUrl}
+                    alt={tenant.name}
+                    className="w-11 h-11 rounded-full object-cover shrink-0 border border-gray-200 dark:border-gray-700"
+                    referrerPolicy="no-referrer"
+                  />
                 ) : (
-                  <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 border-2 border-white dark:border-gray-800 shadow-sm">
-                    <User className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  <div className="w-11 h-11 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0 text-blue-600 dark:text-blue-400 font-bold text-sm">
+                    {tenant.name?.charAt(0)?.toUpperCase() || <User className="w-5 h-5" />}
                   </div>
                 )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors pr-8">{tenant.name}</h3>
-                    <div className="text-right shrink-0">
-                      <p className="text-lg font-black text-blue-600 dark:text-blue-400">{tenant.monthlyRent} $</p>
-                      <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">/mois</p>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-2 space-y-1.5">
-                    <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2 truncate">
-                      <MapPin className="w-4 h-4 text-gray-400 shrink-0" /> 
-                      <span className="truncate">{tenant.address} <span className="text-gray-400">({tenant.housingType})</span></span>
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-gray-400 shrink-0" /> {tenant.phone}
-                    </p>
-                  </div>
 
-                  <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg">
-                        Garantie: {tenant.guaranteeAmount || 0} $
-                      </span>
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
-                        tenant.guaranteeStatus === 'Payée' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                        tenant.guaranteeStatus === 'Partielle' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
-                        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      }`}>
-                        {tenant.guaranteeStatus || 'Non payée'}
-                      </span>
-                    </div>
-
-                    <button 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setTenantToDelete(tenant.id);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors absolute bottom-4 right-4"
-                      title="Supprimer le locataire"
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to={`/tenants/${tenant.id}`}
+                      state={{ tenant }}
+                      className="text-sm font-bold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors truncate"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      {tenant.name}
+                    </Link>
+                    {tenant.housingType && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                        {tenant.housingType}
+                      </span>
+                    )}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      tenant.guaranteeStatus === 'Payée' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                      tenant.guaranteeStatus === 'Partielle' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                      'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                    }`}>
+                      Garantie {tenant.guaranteeStatus || 'Non payée'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <span className="flex items-center gap-1 truncate max-w-[220px]">
+                      <MapPin className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                      {tenant.address || 'Adresse non renseignée'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                      {tenant.phone}
+                    </span>
                   </div>
                 </div>
               </div>
-            </Link>
+
+              {/* Price & Actions */}
+              <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700/60">
+                <div className="text-left sm:text-right">
+                  <span className="text-base font-extrabold text-blue-600 dark:text-blue-400">
+                    {tenant.monthlyRent} $
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-medium"> / mois</span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={`https://wa.me/${tenant.phone?.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Bonjour ${tenant.name}, voici un message de votre bailleur concernant votre bail ImmoGest.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
+                    title="Contacter sur WhatsApp"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                  </a>
+
+                  <Link
+                    to={`/tenants/${tenant.id}`}
+                    state={{ tenant }}
+                    className="px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/60 transition-colors"
+                  >
+                    Détails
+                  </Link>
+
+                  <button 
+                    onClick={() => setTenantToDelete(tenant.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                    title="Supprimer le locataire"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
           ))}
+
           {filteredTenants.length === 0 && !loading && (
-            <div className="col-span-full text-center py-12 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 border-dashed">
-              <User className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-500 dark:text-gray-400">Aucun locataire trouvé.</p>
+            <div className="p-8 text-center bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 border-dashed">
+              <User className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 dark:text-gray-400">Aucun locataire trouvé.</p>
             </div>
           )}
         </div>
       )}
 
       {showAddForm && (
-        <AddTenantModal onClose={() => setShowAddForm(false)} allTenants={tenants} />
+        <AddTenantModal
+          onClose={() => setShowAddForm(false)}
+          allTenants={tenants}
+          onSuccess={(dispatchInfo) => {
+            setShowAddForm(false);
+            setTenantDispatch(dispatchInfo);
+          }}
+        />
       )}
+
+      {/* Tenant Access Dispatch Modal (WhatsApp / Email auto link sharing) */}
+      {tenantDispatch && (
+        <TenantAccessDispatchModal
+          info={tenantDispatch}
+          onClose={() => setTenantDispatch(null)}
+        />
+      )}
+
       {tenantToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Supprimer le locataire</h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-6">Êtes-vous sûr de vouloir supprimer ce locataire ? Cette action est irréversible et supprimera également l'accès à son historique.</p>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Supprimer le locataire</h2>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Êtes-vous sûr de vouloir supprimer ce locataire ? Cette action est irréversible et supprimera également l'accès à son historique.
+            </p>
             <div className="flex gap-3">
-              <button onClick={() => setTenantToDelete(null)} className="flex-1 py-2.5 px-4 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Annuler</button>
-              <button onClick={handleDelete} className="flex-1 py-2.5 px-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors">Confirmer</button>
+              <button onClick={() => setTenantToDelete(null)} className="flex-1 py-2 px-4 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs sm:text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Annuler
+              </button>
+              <button onClick={handleDelete} className="flex-1 py-2 px-4 bg-red-600 text-white rounded-xl text-xs sm:text-sm font-semibold hover:bg-red-700 transition-colors">
+                Confirmer
+              </button>
             </div>
           </div>
         </div>
@@ -204,12 +339,125 @@ export function Tenants() {
   );
 }
 
-import { initializeApp } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+/**
+ * Modal to automatically dispatch portal link to tenant via WhatsApp or Email
+ * Enforces rule: Landlord does NOT tamper with tenant space directly.
+ */
+function TenantAccessDispatchModal({ info, onClose }: { info: TenantDispatchInfo; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const portalUrl = `${window.location.origin}/pay/${info.tenantId}`;
+  const cleanPhone = info.phone.replace(/[^0-9]/g, '');
 
-function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenants: any[] }) {
+  const whatsappMessage = `Bonjour ${info.name},\nVotre bailleur vous a enregistré sur la plateforme ImmoGest.\nVoici votre lien d'accès exclusif et sécurisé pour consulter vos loyers, télécharger vos quittances officielles PDF et suivre vos paiements :\n${portalUrl}\nConservez bien ce lien.`;
+
+  const mailSubject = `Votre espace locataire sécurisé ImmoGest - ${info.name}`;
+  const mailBody = `Bonjour ${info.name},\n\nVotre bailleur a créé votre dossier locataire sur ImmoGest.\n\nVous pouvez désormais accéder à votre espace personnel sécurisé en cliquant sur le lien suivant :\n${portalUrl}\n\nDans cet espace vous pourrez :\n- Vérifier l'état de votre loyer\n- Télécharger vos reçus et quittances officielles de paiement en 1 clic\n- Transmettre vos preuves de paiement\n\nBien cordialement,\nImmoGest`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(portalUrl);
+    setCopied(true);
+    toast.success("Lien de l'espace locataire copié !");
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleWhatsApp = () => {
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMessage)}`, '_blank');
+  };
+
+  const handleEmail = () => {
+    window.open(`mailto:${info.email}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`, '_blank');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 dark:text-white text-base">
+                Espace Locataire Activé !
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Lien personnel pour {info.name}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Security Rule Note */}
+        <div className="my-4 p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
+          <Lock className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
+          <p>
+            <strong>Confidentialité garantie :</strong> Le bailleur ne dispose pas d'accès direct pour modifier les informations privées du locataire. Transmettez ce lien au locataire afin qu'il consulte son portail en toute autonomie.
+          </p>
+        </div>
+
+        {/* Portal URL box */}
+        <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-2 mb-5">
+          <input
+            type="text"
+            readOnly
+            value={portalUrl}
+            className="bg-transparent text-xs text-gray-700 dark:text-gray-300 font-mono w-full outline-none select-all truncate"
+          />
+          <button
+            onClick={handleCopy}
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 transition-colors"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copied ? 'Copié' : 'Copier'}</span>
+          </button>
+        </div>
+
+        {/* Immediate 1-Click Dispatch Buttons */}
+        <div className="space-y-2.5">
+          {info.phone && (
+            <button
+              onClick={handleWhatsApp}
+              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Transmettre sur WhatsApp ({info.phone})</span>
+            </button>
+          )}
+
+          {info.email && (
+            <button
+              onClick={handleEmail}
+              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all"
+            >
+              <Mail className="w-4 h-4" />
+              <span>Transmettre par Email ({info.email})</span>
+            </button>
+          )}
+
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddTenantModal({ 
+  onClose, 
+  allTenants, 
+  onSuccess 
+}: { 
+  onClose: () => void; 
+  allTenants: any[]; 
+  onSuccess: (info: TenantDispatchInfo) => void;
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [properties, setProperties] = useState<any[]>([]);
@@ -300,7 +548,6 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
       console.error(err);
     }
     
-    // Strict requirement validation
     if (availableLevels !== null && !availableLevels.includes(formData.level)) {
        setError("L'étage sélectionné n'est pas libre ou n'existe pas.");
        return;
@@ -310,10 +557,10 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
     setError('');
 
     let userCredential;
-    let pwd = crypto.randomUUID().slice(-8) + 'A1!';
+    const pwd = crypto.randomUUID().slice(-8) + 'A1!';
     
     try {
-      const secondaryAppId = 'Secondary_' + Math.random().toString(36).substring(2, 9);
+      const secondaryAppId = 'Secondary_' + crypto.randomUUID().replace(/-/g, '');
       const secondaryApp = initializeApp(firebaseConfig, secondaryAppId);
       const secondaryAuth = getAuth(secondaryApp);
       userCredential = await createUserWithEmailAndPassword(secondaryAuth, formData.email, pwd);
@@ -371,7 +618,6 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
              createdAt: now
         });
         await sendPasswordResetEmail(secondaryAuth, formData.email);
-        toast.success("Le locataire a été ajouté et un email de configuration lui a été envoyé !");
         await secondaryAuth.signOut();
       } catch (authErr: any) {
         console.error("Failed to set user document / send reset email", authErr);
@@ -388,7 +634,13 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
         }
       }
 
-      onClose();
+      toast.success("Locataire créé avec succès !");
+      onSuccess({
+        tenantId: newTenantId,
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email
+      });
     } catch (error) {
       console.error("Error adding tenant", error);
       toast.error('Erreur lors de l\'ajout.');
@@ -398,23 +650,24 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
     }
   };
 
-
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto transition-colors">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Nouveau Locataire</h2>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto transition-colors">
+        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Nouveau Locataire</h2>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-3.5">
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
+            <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-semibold">
               {error}
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Bien Immobilier (Optionnel)</label>
-            <select value={formData.propertyId} onChange={handlePropertyChange} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Bien Immobilier (Optionnel)</label>
+            <select value={formData.propertyId} onChange={handlePropertyChange} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs">
               <option value="">Aucun bien sélectionné</option>
               {properties.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -422,53 +675,27 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Photo (optionnelle)</label>
-            <input type="file" accept="image/*" onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => setFormData({...formData, photoUrl: reader.result as string});
-                reader.readAsDataURL(file);
-              } else {
-                setFormData({...formData, photoUrl: ''});
-              }
-            }} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            {formData.photoUrl && <img src={formData.photoUrl} alt="Aperçu" className="mt-2 h-16 w-16 object-cover rounded-lg" />}
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Nom complet</label>
+            <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom complet</label>
-            <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Téléphone</label>
-            <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
-          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800">
-            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">Accès Locataire</h4>
-            <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
-              Une adresse email est obligatoire. Un compte sera automatiquement créé pour le locataire afin d'accéder à son espace. 
-              S'il possède déjà un compte avec cet email, la création sera refusée.
-            </p>
-            
-            <label className="block text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-              Email <span className="text-red-500">*</span>
-            </label>
-            <input 
-              type="email" 
-              required
-              value={formData.email} 
-              onChange={e => setFormData({...formData, email: e.target.value})} 
-              className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Adresse / Numéro de porte</label>
-            <input required type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type de bien</label>
-              <select disabled={!!selectedProperty} value={formData.housingType} onChange={e => setFormData({...formData, housingType: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-50">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Téléphone</label>
+              <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" placeholder="Ex: +243810000000" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Email <span className="text-red-500">*</span></label>
+              <input required type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" placeholder="locataire@gmail.com" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Adresse / Numéro de porte</label>
+            <input required type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Type de bien</label>
+              <select disabled={!!selectedProperty} value={formData.housingType} onChange={e => setFormData({...formData, housingType: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs disabled:opacity-50">
                 <option>Appartement</option>
                 <option>Maison</option>
                 <option>Chambre</option>
@@ -478,125 +705,66 @@ function AddTenantModal({ onClose, allTenants }: { onClose: () => void, allTenan
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date d'entrée</label>
-              <input required type="date" value={formData.entryDate} onChange={e => setFormData({...formData, entryDate: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Date d'entrée</label>
+              <input required type="date" value={formData.entryDate} onChange={e => setFormData({...formData, entryDate: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
             </div>
           </div>
           
           {isAppartImmeuble && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Étage sélectionné</label>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Étage sélectionné</label>
               {availableLevels ? (
                 availableLevels.length > 0 ? (
-                  <select required value={Number.isNaN(formData.level) ? '' : formData.level} onChange={e => setFormData({...formData, level: parseInt(e.target.value) || 0})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="" disabled className="hidden">Sélectionnez un étage libre</option>
+                  <select required value={Number.isNaN(formData.level) ? '' : formData.level} onChange={e => setFormData({...formData, level: parseInt(e.target.value) || 0})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs">
                     {availableLevels.map(lvl => (
                       <option key={lvl} value={lvl}>{lvl === 0 ? "Rez-de-chaussée" : `Étage ${lvl}`}</option>
                     ))}
                   </select>
                 ) : (
-                  <div className="p-3 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium border border-orange-100">
+                  <div className="p-2.5 bg-orange-50 text-orange-700 rounded-xl text-xs font-medium border border-orange-100">
                     Ce bien est complet. Aucun étage disponible.
                   </div>
                 )
               ) : (
-                <input required type="number" min="0" value={formData.level} onChange={e => setFormData({...formData, level: parseInt(e.target.value) || 0})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ex: 2 pour le 2ème" />
+                <input required type="number" min="0" value={formData.level} onChange={e => setFormData({...formData, level: parseInt(e.target.value) || 0})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" placeholder="Ex: 2 pour le 2ème" />
               )}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Loyer mensuel ($)</label>
-              <input required type="number" min="0" value={formData.monthlyRent} onChange={e => setFormData({...formData, monthlyRent: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Loyer mensuel ($)</label>
+              <input required type="number" min="0" value={formData.monthlyRent} onChange={e => setFormData({...formData, monthlyRent: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Garantie ($)</label>
-              <input required type="number" min="0" value={formData.guaranteeAmount} onChange={e => setFormData({...formData, guaranteeAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Forfait Eau ($)</label>
-              <input required type="number" min="0" value={formData.waterAmount} onChange={e => setFormData({...formData, waterAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Forfait Électricité ($)</label>
-              <input required type="number" min="0" value={formData.electricityAmount} onChange={e => setFormData({...formData, electricityAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Garantie ($)</label>
+              <input required type="number" min="0" value={formData.guaranteeAmount} onChange={e => setFormData({...formData, guaranteeAmount: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Frais syndics ($)</label>
-              <input required type="number" min="0" value={formData.syndicAmount} onChange={e => setFormData({...formData, syndicAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Forfait Eau ($)</label>
+              <input required type="number" min="0" value={formData.waterAmount} onChange={e => setFormData({...formData, waterAmount: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Internet / Networks ($)</label>
-              <input required type="number" min="0" value={formData.networkAmount} onChange={e => setFormData({...formData, networkAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Entretien ($)</label>
-              <input required type="number" min="0" value={formData.cleaningAmount} onChange={e => setFormData({...formData, cleaningAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Autre ($)</label>
-              <input required type="number" min="0" value={formData.otherAmount} onChange={e => setFormData({...formData, otherAmount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Forfait Élec. ($)</label>
+              <input required type="number" min="0" value={formData.electricityAmount} onChange={e => setFormData({...formData, electricityAmount: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs" />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Statut de la garantie</label>
-            <select value={formData.guaranteeStatus} onChange={e => setFormData({...formData, guaranteeStatus: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Statut Garantie</label>
+            <select value={formData.guaranteeStatus} onChange={e => setFormData({...formData, guaranteeStatus: e.target.value})} className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs">
               <option>Non payée</option>
               <option>Partielle</option>
               <option>Payée</option>
             </select>
           </div>
-          <hr className="my-4 border-gray-200 dark:border-gray-700" />
-          <h3 className="font-bold text-gray-900 dark:text-white mb-2">Pièce d'identité</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type de pièce</label>
-              <select value={formData.idType} onChange={e => setFormData({...formData, idType: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                <option>Carte d'électeur</option>
-                <option>Permis de conduire</option>
-                <option>Passeport</option>
-                <option>Carte d'identité</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Numéro de la pièce</label>
-              <input type="text" value={formData.idNumber} onChange={e => setFormData({...formData, idNumber: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ex: N°123456" />
-            </div>
-          </div>
           
-          <hr className="my-4 border-gray-200 dark:border-gray-700" />
-          <h3 className="font-bold text-gray-900 dark:text-white mb-2">Situation Familiale</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Statut marital</label>
-              <select value={formData.familyStatus} onChange={e => setFormData({...formData, familyStatus: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
-                <option>Célibataire</option>
-                <option>En couple</option>
-                <option>Marié(e)</option>
-                <option>Divorcé(e)</option>
-                <option>Veuf/Veuve</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre d'enfants</label>
-              <input required type="number" min="0" value={formData.childrenCount} onChange={e => setFormData({...formData, childrenCount: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cohabitants (ex: frère, ami...)</label>
-            <input type="text" value={formData.cohabitants} onChange={e => setFormData({...formData, cohabitants: e.target.value})} className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Laissez vide si aucun" />
-          </div>
-          
-          <div className="pt-4 flex gap-3">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 px-4 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Annuler</button>
-            <button type="submit" disabled={loading} className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50">
-              {loading ? 'Enregistrement...' : 'Enregistrer'}
+          <div className="pt-3 flex gap-2.5">
+            <button type="button" onClick={onClose} className="flex-1 py-2 px-3 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              Annuler
+            </button>
+            <button type="submit" disabled={loading} className="flex-1 py-2 px-3 bg-blue-600 text-white rounded-xl text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50">
+              {loading ? 'Création...' : 'Créer & Envoyer Lien'}
             </button>
           </div>
         </form>

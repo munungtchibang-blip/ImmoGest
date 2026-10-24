@@ -23,6 +23,7 @@ import { setDoc, doc, getDoc, collection, addDoc, query, where, getDocs, updateD
 import './lib/i18n';
 import toast, { Toaster } from 'react-hot-toast';
 import { Layout } from './components/Layout';
+import { SubscriptionProvider } from './context/SubscriptionContext';
 import { Dashboard } from './pages/Dashboard';
 import { Tenants } from './pages/Tenants';
 import { TenantDetail } from './pages/TenantDetail';
@@ -562,25 +563,27 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Toaster />
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="properties" element={<Properties />} />
-          <Route path="properties/:id" element={<PropertyDetail />} />
-          <Route path="calendar" element={<Calendar />} />
-          <Route path="tenants" element={<Tenants />} />
-          <Route path="tenants/:id" element={<TenantDetail />} />
-          <Route path="payments" element={<Payments />} />
-          <Route path="expenses" element={<Expenses />} />
-          <Route path="maintenance" element={<Maintenance />} />
-          <Route path="contracts" element={<Contracts />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-        <Route path="/pay/:id" element={<PublicPay />} />
-      </Routes>
+      <SubscriptionProvider>
+        <Toaster />
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="properties" element={<Properties />} />
+            <Route path="properties/:id" element={<PropertyDetail />} />
+            <Route path="calendar" element={<Calendar />} />
+            <Route path="tenants" element={<Tenants />} />
+            <Route path="tenants/:id" element={<TenantDetail />} />
+            <Route path="payments" element={<Payments />} />
+            <Route path="expenses" element={<Expenses />} />
+            <Route path="maintenance" element={<Maintenance />} />
+            <Route path="contracts" element={<Contracts />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+          <Route path="/pay/:id" element={<PublicPay />} />
+        </Routes>
+      </SubscriptionProvider>
     </BrowserRouter>
   );
 }

@@ -87,75 +87,70 @@ export function Maintenance() {
           {[1,2,3].map(i => <div key={i} className="h-32 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
+        <div className="space-y-2.5">
           {issues.length === 0 ? (
-            <div className="p-12 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 transition-colors">
-              <Wrench className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-500 dark:text-gray-400">Aucun problème signalé.</p>
+            <div className="p-8 text-center bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors">
+              <Wrench className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 dark:text-gray-400">Aucun problème signalé.</p>
             </div>
           ) : (
             issues.map(issue => {
               const tenant = tenantsMap[issue.tenantId];
               return (
-                <div key={issue.id} className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-6 transition-colors">
-                  <div className="flex-1 w-full overflow-hidden">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
-                        issue.status === 'Résolu' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                        issue.status === 'En cours' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
-                        'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                <div key={issue.id} className="bg-white dark:bg-gray-800 p-3.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        issue.status === 'Résolu' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                        issue.status === 'En cours' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' :
+                        'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
                       }`}>
-                        {issue.status === 'Résolu' && <CheckCircle2 className="w-4 h-4" />}
-                        {issue.status === 'En cours' && <Clock className="w-4 h-4" />}
-                        {issue.status === 'En attente' && <AlertCircle className="w-4 h-4" />}
+                        {issue.status === 'Résolu' && <CheckCircle2 className="w-3 h-3" />}
+                        {issue.status === 'En cours' && <Clock className="w-3 h-3" />}
+                        {issue.status === 'En attente' && <AlertCircle className="w-3 h-3" />}
                         {issue.status}
                       </span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                      <span className="text-[11px] text-gray-400">
                         {format(new Date(issue.createdAt), 'dd MMM yyyy', { locale: fr })}
                       </span>
+                      {issue.cost !== undefined && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          Coût : {issue.cost} $
+                        </span>
+                      )}
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 break-words">{issue.description}</h3>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">Signalé par : {tenant?.name || 'Locataire inconnu'} ({tenant?.address}) {tenant?.phone && `• ${tenant.phone}`}</p>
-                    {issue.photoUrl && (
-                      <div className="mt-3">
-                        <img src={issue.photoUrl} alt="Problème" className="max-h-48 rounded-xl object-cover border border-gray-200 cursor-pointer" onClick={() => setShowPhoto(issue.photoUrl)} referrerPolicy="no-referrer" />
-                      </div>
-                    )}
+                    <h3 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white break-words">{issue.description}</h3>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      Signalé par : <span className="font-semibold">{tenant?.name || 'Locataire'}</span> ({tenant?.address}) {tenant?.phone && `• ${tenant.phone}`}
+                    </p>
                     {issue.notes && (
-                      <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-sm text-gray-700 dark:text-gray-300">
-                        <strong>Notes :</strong> {issue.notes}
-                      </div>
-                    )}
-                    {(issue.cost !== undefined || issue.duration || issue.status === 'Résolu') && (
-                      <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-gray-900 dark:text-white">Coût :</span> 
-                          {issue.cost !== undefined ? `${issue.cost} $` : '-'}
-                        </div>
-                        {issue.duration && (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-medium text-gray-900 dark:text-white">Durée :</span> {issue.duration}
-                          </div>
-                        )}
-                      </div>
+                      <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1 italic bg-gray-50 dark:bg-gray-900/40 p-1.5 rounded-lg border border-gray-100 dark:border-gray-800">
+                        <strong>Note :</strong> {issue.notes}
+                      </p>
                     )}
                   </div>
-                  
-                  <div className="flex flex-row md:flex-col gap-2 shrink-0 border-t md:border-t-0 md:border-l border-gray-100 dark:border-gray-700 pt-4 md:pt-0 md:pl-6">
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 hidden md:block">Actions</p>
+
+                  <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-gray-800 justify-end">
+                    {issue.photoUrl && (
+                      <button
+                        onClick={() => setShowPhoto(issue.photoUrl)}
+                        className="px-2.5 py-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
+                      >
+                        Photo
+                      </button>
+                    )}
                     <button
                       onClick={() => setRespondingToIssue(issue)}
-                      className="w-full md:w-auto p-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors flex items-center justify-center font-medium gap-2 text-sm border border-blue-200 dark:border-blue-800"
+                      className="px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/60 transition-colors"
                     >
-                      Répondre / Évaluer
+                      Évaluer
                     </button>
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIssueToDelete(issue.id); }}
-                      className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors flex items-center justify-center gap-2 mt-auto"
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                       title="Supprimer"
                     >
-                      <Trash2 className="w-5 h-5" />
-                      <span className="md:hidden text-sm font-medium">Supprimer</span>
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

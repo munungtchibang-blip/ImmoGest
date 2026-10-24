@@ -1,39 +1,107 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { doc, getDoc, addDoc, collection, query, where, getDocs, deleteDoc, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { doc, getDoc, addDoc, collection, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { CreditCard, CheckCircle2, ChevronRight, Smartphone, Building2, Droplets, Zap, Wrench, Menu, X, Receipt, History, Trash2, ShieldCheck, User, MessageSquare, Lock } from 'lucide-react';
+import { 
+  CreditCard, 
+  CheckCircle2, 
+  ChevronRight, 
+  Smartphone, 
+  Building2, 
+  Droplets, 
+  Zap, 
+  Wrench, 
+  History, 
+  Trash2, 
+  ShieldCheck, 
+  ShieldAlert,
+  User, 
+  MessageSquare, 
+  Lock, 
+  Download, 
+  Camera, 
+  AlertTriangle, 
+  Calendar, 
+  Phone, 
+  Mail, 
+  LogOut, 
+  DollarSign, 
+  Check, 
+  Clock,
+  Layers
+} from 'lucide-react';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { PhotoModal } from '../components/PhotoModal';
-
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+function downloadSingleReceipt(payment: any, tenant: any) {
+  const docPdf = new jsPDF();
+  docPdf.setFillColor(30, 58, 138);
+  docPdf.rect(0, 0, 210, 40, 'F');
+  
+  docPdf.setTextColor(255, 255, 255);
+  docPdf.setFont("helvetica", "bold");
+  docPdf.setFontSize(22);
+  docPdf.text("QUITTANCE DE PAIEMENT", 105, 25, { align: "center" });
+
+  docPdf.setTextColor(31, 41, 55);
+  docPdf.setFontSize(11);
+  docPdf.setFont("helvetica", "normal");
+  docPdf.text(`Réf: PAY-${payment.id?.substring(0, 8)?.toUpperCase() || 'REC'}`, 14, 50);
+  docPdf.text(`Date d'émission: ${new Date().toLocaleDateString('fr-FR')}`, 140, 50);
+
+  docPdf.setDrawColor(229, 231, 235);
+  docPdf.line(14, 55, 196, 55);
+
+  docPdf.setFontSize(12);
+  docPdf.text(`Locataire: ${tenant?.name || 'Inconnu'}`, 14, 65);
+  docPdf.text(`Adresse du bien: ${tenant?.address || 'N/A'}`, 14, 73);
+
+  autoTable(docPdf, {
+    startY: 85,
+    head: [['Nature', 'Date du règlement', 'Moyen de paiement', 'Montant réglé', 'Statut']],
+    body: [[
+      payment.type || 'Loyer',
+      new Date(payment.date).toLocaleDateString('fr-FR'),
+      payment.method || 'Mobile Money',
+      `${payment.amount} $`,
+      payment.status || 'Validé'
+    ]],
+    theme: 'grid',
+    headStyles: { fillColor: [30, 58, 138] }
+  });
+
+  const finalY = (docPdf as any).lastAutoTable?.finalY || 120;
+  docPdf.setFontSize(10);
+  docPdf.text("Ce document certifie le paiement libératoire pour les sommes mentionnées ci-dessus.", 14, finalY + 15);
+  docPdf.text("ImmoGest - Gestion Locative Sécurisée", 14, finalY + 25);
+
+  docPdf.save(`quittance_${tenant?.name || 'locataire'}_${payment.id?.substring(0,6) || 'recu'}.pdf`);
+}
 
 function HistoryTab({ items, tenant }: { items: any[], tenant: any }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const downloadPDF = () => {
-    const doc = new jsPDF();
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("Historique des paiements et dépenses", 105, 20, { align: "center" });
+    const docPdf = new jsPDF();
+    docPdf.setFont("helvetica", "bold");
+    docPdf.setFontSize(18);
+    docPdf.text("Historique des paiements et dépenses", 105, 20, { align: "center" });
 
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Locataire: ${tenant?.name || 'Inconnu'}`, 14, 30);
+    docPdf.setFontSize(12);
+    docPdf.setFont("helvetica", "normal");
+    docPdf.text(`Locataire: ${tenant?.name || 'Inconnu'}`, 14, 30);
     
-    items.forEach(p => {
-       if (p.isExpense) { /* do nothing for now */ }
-    });
-
-    autoTable(doc, {
+    autoTable(docPdf, {
       startY: 40,
-      head: [['Date', 'Type', 'Méthode', 'Montant', 'Détails']],
+      head: [['Date', 'Type', 'Méthode', 'Montant', 'Statut', 'Détails']],
       body: items.map(p => [
         new Date(p.date).toLocaleDateString('fr-FR'),
         p.type,
         p.method,
         `${p.isExpense ? '-' : '+'}${Math.abs(Number(p.amount))} $`,
+        p.status || 'Validé',
         p.notes || ''
       ]),
       theme: 'grid',
@@ -41,19 +109,23 @@ function HistoryTab({ items, tenant }: { items: any[], tenant: any }) {
       headStyles: { fillColor: [79, 70, 229] }
     });
 
-    doc.save(`historique_${tenant?.name || 'locataire'}.pdf`);
+    docPdf.save(`historique_${tenant?.name || 'locataire'}.pdf`);
   };
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-        <h2 className="text-xl font-bold text-gray-900">Historique</h2>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Historique & Justificatifs</h2>
+          <p className="text-xs text-gray-500">Tous vos règlements et déductions enregistrés</p>
+        </div>
         {items.length > 0 && (
           <button 
             onClick={downloadPDF}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl hover:bg-indigo-100 transition-colors text-sm font-medium"
           >
-            Télécharger PDF
+            <Download className="w-4 h-4" />
+            Télécharger Tout en PDF
           </button>
         )}
       </div>
@@ -61,17 +133,26 @@ function HistoryTab({ items, tenant }: { items: any[], tenant: any }) {
       {items.map((p: any) => {
         const isExpanded = expandedId === p.id;
         return (
-          <div key={p.id} className="flex flex-col p-4 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => setExpandedId(isExpanded ? null : p.id)}>
+          <div key={p.id} className="flex flex-col p-4 bg-gray-50 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100/80 transition-colors" onClick={() => setExpandedId(isExpanded ? null : p.id)}>
             <div className="flex justify-between items-center mb-1">
                <div>
-                 <p className="font-bold text-gray-900 flex items-center gap-2">
+                 <p className="font-bold text-gray-900 flex items-center gap-2 text-sm sm:text-base">
                    {p.type}
                    <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                  </p>
-                 <p className="text-xs text-gray-500">{new Date(p.date).toLocaleDateString('fr-FR')} • {p.method}</p>
+                 <p className="text-xs text-gray-500">
+                   {new Date(p.date).toLocaleDateString('fr-FR')} • {p.method}
+                 </p>
                </div>
-               <div className="flex items-center gap-4 text-right">
-                 <p className={`font-bold ${Number(p.amount) < 0 || p.isExpense ? 'text-red-600' : 'text-green-600'}`}>
+               <div className="flex items-center gap-3 text-right">
+                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                   p.status === 'En attente' ? 'bg-amber-100 text-amber-800' :
+                   p.status === 'Rejeté' ? 'bg-red-100 text-red-800' :
+                   'bg-emerald-100 text-emerald-800'
+                 }`}>
+                   {p.status || 'Validé'}
+                 </span>
+                 <p className={`font-bold text-sm sm:text-base ${Number(p.amount) < 0 || p.isExpense ? 'text-red-600' : 'text-emerald-600'}`}>
                    {Number(p.amount) > 0 && !p.isExpense ? '+' : ''}
                    {p.isExpense ? '-' : ''}
                    {Math.abs(Number(p.amount))} $
@@ -84,177 +165,405 @@ function HistoryTab({ items, tenant }: { items: any[], tenant: any }) {
                 <p><strong>Montant:</strong> {Math.abs(Number(p.amount))} $</p>
                 <p><strong>Méthode:</strong> {p.method}</p>
                 <p><strong>Type:</strong> {p.type}</p>
+                <p><strong>Statut:</strong> {p.status || 'Validé'}</p>
                 {p.notes && <p><strong>Détails:</strong> {p.notes}</p>}
                 {p.isExpense && <p className="text-xs italic mt-2 text-gray-500">* Cette dépense a été déduite de votre garantie locative.</p>}
+                <div className="pt-2 flex gap-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      downloadSingleReceipt(p, tenant);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-semibold hover:bg-indigo-100"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Quittance individuelle
+                  </button>
+                </div>
               </div>
             )}
           </div>
         );
       })}
-      {items.length === 0 && <p className="text-center text-gray-500 py-4">Historique vide.</p>}
+      {items.length === 0 && (
+        <div className="text-center py-8 text-gray-400">
+          <History className="w-10 h-10 mx-auto mb-2 opacity-40" />
+          <p className="text-sm">Aucun historique de paiement pour le moment.</p>
+        </div>
+      )}
     </div>
   );
 }
 
 export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const params = useParams();
+  const navigate = useNavigate();
   const tenantId = propTenantId || params.id;
+
   const [tenant, setTenant] = useState<any>(null);
-  const [isTenantAuthed, setIsTenantAuthed] = useState(false);
   const [payments, setPayments] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [maintenances, setMaintenances] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [contract, setContract] = useState<any>(null);
+  const [adminPaymentConfig, setAdminPaymentConfig] = useState<any>(null);
+
+  const [loading, setLoading] = useState(Boolean(tenantId));
   const [error, setError] = useState('');
+  const [isLandlordBlocked, setIsLandlordBlocked] = useState(false);
   const [showPhoto, setShowPhoto] = useState<string | null>(null);
-  
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'maintenance' | 'report' | 'responses' | 'account' | 'contract'>('dashboard');
+
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'report' | 'account' | 'contract'>('dashboard');
+
+  // Payment Form States
   const [paymentType, setPaymentType] = useState<string>('Loyer');
-  const [paymentAmount, setPaymentAmount] = useState('');
-  
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
+  const [paymentStep, setPaymentStep] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState<'Mobile Money' | 'Carte Visa' | 'Preuve Photo'>('Mobile Money');
+  const [paymentProvider, setPaymentProvider] = useState<string>(() => {
+    try { return localStorage.getItem('tenant_paymentProvider') || 'M-Pesa'; } catch { return 'M-Pesa'; }
+  });
+  const [accountNumber, setAccountNumber] = useState<string>(() => {
+    try { return localStorage.getItem('tenant_accountNumber') || ''; } catch { return ''; }
+  });
+  const [proofImage, setProofImage] = useState<string>('');
+  const [proofNote, setProofNote] = useState<string>('');
+  const [paymentResult, setPaymentResult] = useState<string>('');
+  const [failReason, setFailReason] = useState<string>('');
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [savedAccountSuccess, setSavedAccountSuccess] = useState(false);
+
+  // Maintenance Form States
+  const [issueTitle, setIssueTitle] = useState('Eau');
+  const [issueDesc, setIssueDesc] = useState('');
+  const [issuePriority, setIssuePriority] = useState('Normale');
+  const [issuePhotoUrl, setIssuePhotoUrl] = useState('');
   const [respondingIssueId, setRespondingIssueId] = useState<string | null>(null);
   const [tenantResponseTargetStatus, setTenantResponseTargetStatus] = useState<string>('');
   const [tenantResponseText, setTenantResponseText] = useState<string>('');
-  
-  const [paymentStep, setPaymentStep] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const getLocalItem = (key: string) => {
-    try { return localStorage.getItem(key); } catch (e) { return null; }
-  };
-  const setLocalItem = (key: string, value: string) => {
-    try { localStorage.setItem(key, value); } catch (e) {}
-  };
+  const [submittingIssue, setSubmittingIssue] = useState(false);
 
-  const [savedAccount, setSavedAccount] = useState(false);
-  const [paymentProvider, setPaymentProvider] = useState(getLocalItem('tenant_paymentProvider') || 'M-Pesa');
-  const [accountNumber, setAccountNumber] = useState(getLocalItem('tenant_accountNumber') || '');
-  const [paymentResult, setPaymentResult] = useState('');
-  const handleSaveAccount = () => {
-    setLocalItem('tenant_paymentProvider', paymentProvider);
-    setLocalItem('tenant_accountNumber', accountNumber);
-    setSavedAccount(true);
-    setTimeout(() => setSavedAccount(false), 3000);
-  };
-  const [failReason, setFailReason] = useState('');
-
-  const [issueTitle, setIssueTitle] = useState('Eau');
-  const [issueDesc, setIssueDesc] = useState('');
-  const [issuePhotoUrl, setIssuePhotoUrl] = useState('');
-
-  const [adminPaymentConfig, setAdminPaymentConfig] = useState<any>(null);
   const [manualCode, setManualCode] = useState('');
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
 
-  const [contract, setContract] = useState<any>(null);
-  
+  // Fetch tenant doc and listen to collections
   useEffect(() => {
-    const fetchTenantData = async () => {
-      if (!tenantId) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
+    if (!tenantId) return;
+
+    let isMounted = true;
+
+    const initTenant = async () => {
       try {
         const docRef = doc(db, 'tenants', tenantId);
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const tData: any = { id: docSnap.id, ...docSnap.data() };
-          
-          // Verify ownership
-          if (auth.currentUser) {
-            const { getDoc, doc: fDoc } = await import('firebase/firestore');
-            const currentUserDoc = await getDoc(fDoc(db, 'users', auth.currentUser.uid));
-            if (currentUserDoc.exists()) {
-               const uData = currentUserDoc.data();
-               // If this user is a tenant, they MUST only access their own tenantId.
-               if (uData.role === 'tenant' && uData.tenantId !== tenantId) {
-                 setError('Accès non autorisé.');
-                 setLoading(false);
-                 return;
-               }
-            }
-          }
 
-          setTenant(tData);
-          setPaymentAmount(tData.monthlyRent);
-          
-          setIsTenantAuthed(true);
-          
-          if (tData.landlordId) {
-            const adminDoc = await getDoc(doc(db, 'users', tData.landlordId));
-            if(adminDoc.exists()) {
-              setAdminPaymentConfig(adminDoc.data());
-            }
+        if (!docSnap.exists()) {
+          if (isMounted) {
+            setError('Locataire introuvable. Veuillez vérifier le lien fourni.');
+            setLoading(false);
           }
-          
-          // Fetch Payments
-          const qPays = query(collection(db, 'payments'), where('tenantId', '==', tenantId));
-          const pSnap = await getDocs(qPays);
-          const pData = pSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          setPayments(pData);
-          
-          // Fetch Maintenances
-          const qMaint = query(collection(db, 'maintenance'), where('tenantId', '==', tenantId));
-          const mSnap = await getDocs(qMaint);
-          const mData = mSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          setMaintenances(mData);
-          
-          // Fetch Contract
-          const qContract = query(collection(db, 'contracts'), where('tenantId', '==', tenantId));
-          const cSnap = await getDocs(qContract);
-          if (!cSnap.empty) {
-            // we just take the first contract matching
-            const contractData = cSnap.docs[0].data();
-            setContract({ id: cSnap.docs[0].id, ...contractData });
-          }
-           
-          // Fetch Expenses
-          const qExp = query(collection(db, 'expenses'), where('tenantId', '==', tenantId));
-          const expSnap = await getDocs(qExp);
-          const expData = expSnap.docs.map(d => ({id: d.id, ...d.data()})).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          setExpenses(expData);
-           
-        } else {
-          setError('Locataire introuvable.');
+          return;
         }
+
+        const tData: any = { id: docSnap.id, ...docSnap.data() };
+
+        // Privacy & Tamper Check:
+        // A landlord MUST NEVER access or modify tenant's portal!
+        if (auth.currentUser) {
+          try {
+            const userDocSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            if (userDocSnap.exists()) {
+              const uData = userDocSnap.data();
+              if (uData.role === 'landlord' || auth.currentUser.uid === tData.landlordId) {
+                if (isMounted) {
+                  setIsLandlordBlocked(true);
+                  setLoading(false);
+                }
+                return;
+              }
+              // If tenant user, ensure they match this portal
+              if (uData.role === 'tenant' && uData.tenantId && uData.tenantId !== tenantId) {
+                if (isMounted) {
+                  setError("Accès non autorisé : ce lien ne correspond pas à votre compte locataire.");
+                  setLoading(false);
+                }
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn("User role check error", e);
+          }
+        }
+
+        if (isMounted) {
+          setTenant(tData);
+          setPaymentAmount(String(tData.monthlyRent || 0));
+        }
+
+        // Fetch landlord payment settings (bank, mobile money)
+        if (tData.landlordId) {
+          getDoc(doc(db, 'users', tData.landlordId)).then(adminSnap => {
+            if (adminSnap.exists() && isMounted) {
+              setAdminPaymentConfig(adminSnap.data());
+            }
+          }).catch(console.error);
+        }
+
+        // Realtime payments listener
+        const qPays = query(collection(db, 'payments'), where('tenantId', '==', tenantId));
+        const unsubPayments = onSnapshot(qPays, (pSnap) => {
+          if (!isMounted) return;
+          const pData = pSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a: any, b: any) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
+          setPayments(pData);
+        });
+
+        // Realtime maintenance listener
+        const qMaint = query(collection(db, 'maintenance'), where('tenantId', '==', tenantId));
+        const unsubMaint = onSnapshot(qMaint, (mSnap) => {
+          if (!isMounted) return;
+          const mData = mSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setMaintenances(mData);
+        });
+
+        // Realtime expenses listener
+        const qExp = query(collection(db, 'expenses'), where('tenantId', '==', tenantId));
+        const unsubExp = onSnapshot(qExp, (expSnap) => {
+          if (!isMounted) return;
+          const expData = expSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setExpenses(expData);
+        });
+
+        // Fetch contract
+        const qContract = query(collection(db, 'contracts'), where('tenantId', '==', tenantId));
+        getDocs(qContract).then(cSnap => {
+          if (!cSnap.empty && isMounted) {
+            setContract({ id: cSnap.docs[0].id, ...cSnap.docs[0].data() });
+          }
+        }).catch(console.error);
+
+        if (isMounted) setLoading(false);
+
+        return () => {
+          unsubPayments();
+          unsubMaint();
+          unsubExp();
+        };
+
       } catch (err: any) {
-        console.error("Error fetching tenant", err);
-        setError('Erreur de connexion. Veuillez réessayer plus tard.');
-      } finally {
-        setLoading(false);
+        console.error("Error loading tenant portal", err);
+        if (isMounted) {
+          setError('Erreur de connexion. Veuillez réessayer plus tard.');
+          setLoading(false);
+        }
       }
     };
-    fetchTenantData();
+
+    initTenant();
+
+    return () => {
+      isMounted = false;
+    };
   }, [tenantId]);
 
-  const processPayment = async () => {
+  // Derived Financial Calculations
+  const dToday = useMemo(() => new Date(), []);
+  const currentYear = dToday.getFullYear();
+  const currentMonthStart = useMemo(() => new Date(dToday.getFullYear(), dToday.getMonth(), 1), [dToday]);
+
+  const waterAmount = Number(tenant?.waterAmount) || 0;
+  const electAmount = Number(tenant?.electricityAmount) || 0;
+  const syndicAmount = Number(tenant?.syndicAmount) || 0;
+  const networkAmount = Number(tenant?.networkAmount) || 0;
+  const cleaningAmount = Number(tenant?.cleaningAmount) || 0;
+  const otherAmount = Number(tenant?.otherAmount) || 0;
+
+  const totalMonthlyCharges = waterAmount + electAmount + syndicAmount + networkAmount + cleaningAmount + otherAmount;
+  const totalAmountDuePerMonth = (Number(tenant?.monthlyRent) || 0) + totalMonthlyCharges;
+
+  // Payments this month
+  const paidThisMonthTotal = useMemo(() => {
+    return payments
+      .filter(p => new Date(p.date) >= currentMonthStart && p.status !== 'Rejeté' && !p.isExpense)
+      .reduce((acc, p) => acc + Number(p.amount || 0), 0);
+  }, [payments, currentMonthStart]);
+
+  const paidThisMonthForRent = useMemo(() => {
+    return payments
+      .filter(p => (p.type === 'Loyer' || p.type === 'Tous les frais du mois') && new Date(p.date) >= currentMonthStart && p.status !== 'Rejeté' && !p.isExpense)
+      .reduce((acc, p) => acc + Number(p.amount || 0), 0);
+  }, [payments, currentMonthStart]);
+
+  // Total paid this year (SYNTHESIS WIDGET)
+  const totalPaidThisYear = useMemo(() => {
+    return payments
+      .filter(p => new Date(p.date).getFullYear() === currentYear && p.status !== 'Rejeté' && !p.isExpense)
+      .reduce((acc, p) => acc + Number(p.amount || 0), 0);
+  }, [payments, currentYear]);
+
+  // Progress for monthly rent
+  const monthlyRentNumber = Number(tenant?.monthlyRent) || 0;
+  const rentProgressPercent = monthlyRentNumber > 0 
+    ? Math.min(100, Math.round((paidThisMonthForRent / monthlyRentNumber) * 100))
+    : 100;
+
+  const remainingThisMonth = Math.max(0, totalAmountDuePerMonth - paidThisMonthTotal);
+  const isLate = dToday.getDate() >= 25 && remainingThisMonth > 0;
+
+  // Unpaid months count
+  const rentPayments = useMemo(() => payments.filter(p => p.type === 'Loyer' && p.status !== 'Rejeté'), [payments]);
+  const paidRentTotal = useMemo(() => rentPayments.reduce((acc, p) => acc + Number(p.amount || 0), 0), [rentPayments]);
+  const dateEntry = useMemo(() => new Date(tenant?.entryDate || dToday), [tenant, dToday]);
+  const diffMonths = (dToday.getFullYear() - dateEntry.getFullYear()) * 12 + (dToday.getMonth() - dateEntry.getMonth() + 1);
+  const expectedRentTotal = Math.max(1, diffMonths) * (Number(tenant?.monthlyRent) || 0);
+  const balanceDebt = Math.max(0, expectedRentTotal - paidRentTotal);
+  const unpaidMonths = Math.max(0, Math.ceil(balanceDebt / (Number(tenant?.monthlyRent) || 1)));
+
+  // Anti-Duplicate Check
+  const checkDuplicateForMonth = (typeToCheck: string) => {
+    const curYear = dToday.getFullYear();
+    const curMonth = dToday.getMonth();
+    return payments.some(p => {
+      if (p.status === 'Rejeté') return false;
+      const pDate = new Date(p.date);
+      return (
+        pDate.getFullYear() === curYear &&
+        pDate.getMonth() === curMonth &&
+        (p.type === typeToCheck || (typeToCheck === 'Tous les frais du mois' && p.type === 'Loyer'))
+      );
+    });
+  };
+
+  // Image compressor for proof screenshots
+  const handleProofImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIM = 1000;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.7);
+        setProofImage(compressed);
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Process and Submit Payment or Proof
+  const handleSubmitPayment = async () => {
+    if (!tenant) return;
+
+    const numAmount = Number(paymentAmount);
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
+      alert("Le montant de paiement est invalide ou égal à zéro.");
+      return;
+    }
+
+    // Strict Anti-Duplicate Validation
+    if (checkDuplicateForMonth(paymentType)) {
+      setDuplicateWarning(
+        `Un paiement pour "${paymentType}" est déjà enregistré ou en cours de validation par votre bailleur pour ce mois-ci (${dToday.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}). Pour éviter les doubles débits, l'enregistrement en doublon est bloqué.`
+      );
+      return;
+    }
+
+    // Strict Visa Validation
+    if (paymentMethod === 'Carte Visa') {
+      const sanitized = accountNumber.replace(/\s+/g, '');
+      if (paymentProvider !== 'Carte Visa' && !paymentProvider.toLowerCase().includes('visa')) {
+        alert("Seules les cartes VISA sont acceptées pour le paiement bancaire direct.");
+        return;
+      }
+      if (sanitized.length < 13 || (!sanitized.startsWith('4') && !paymentProvider.toLowerCase().includes('visa'))) {
+        alert("Numéro de carte Visa invalide. Veuillez renseigner un numéro de carte bancaire Visa valide.");
+        return;
+      }
+    }
+
+    setLoading(true);
+    setPaymentResult('');
+    setFailReason('');
+
     try {
       const now = new Date().toISOString();
-      const paymentData = {
-        amount: Number(paymentAmount),
+      const monthKey = `${dToday.getFullYear()}-${String(dToday.getMonth() + 1).padStart(2, '0')}-${paymentType}`;
+
+      const paymentRecord: any = {
+        amount: numAmount,
         date: now,
-        method: `${paymentMethod} ${paymentProvider ? `(${paymentProvider})` : ''}`.trim(),
         type: paymentType,
-        notes: `Paiement automatique via portail locataire. Compte: ***${accountNumber ? accountNumber.slice(-4) : ''}`,
+        monthKey,
         tenantId: tenant.id,
         landlordId: tenant.landlordId,
-        createdAt: now
+        createdAt: now,
+        status: paymentMethod === 'Preuve Photo' ? 'En attente' : 'Validé'
       };
 
-      // Optimistic update for instant mobile response
-      const tempId = `temp_${Date.now()}`;
-      setPayments(prev => [{id: tempId, ...paymentData}, ...prev]);
-      
+      if (paymentMethod === 'Mobile Money') {
+        paymentRecord.method = `Mobile Money (${paymentProvider || 'M-Pesa'})`;
+        paymentRecord.notes = `Paiement Mobile Money automatique. Compte : ***${accountNumber ? accountNumber.slice(-4) : 'Direct'}`;
+      } else if (paymentMethod === 'Carte Visa') {
+        paymentRecord.method = `Carte Visa (${paymentProvider || 'Visa'})`;
+        paymentRecord.notes = `Règlement par Carte Bancaire Visa. Carte : **** ${accountNumber ? accountNumber.slice(-4) : 'Visa'}`;
+      } else {
+        paymentRecord.method = 'Capture / Preuve Reçu';
+        paymentRecord.notes = proofNote || 'Preuve de virement / reçu transmis par le locataire.';
+        paymentRecord.proofUrl = proofImage;
+      }
+
+      // 1. If proof image was provided, also save to dedicated 'paymentProofs' collection
+      // so the landlord sees it immediately in TenantDetail.tsx
+      if (proofImage || paymentMethod === 'Preuve Photo') {
+        await addDoc(collection(db, 'paymentProofs'), {
+          amount: numAmount,
+          date: now,
+          type: paymentType,
+          monthKey,
+          method: paymentRecord.method,
+          notes: paymentRecord.notes,
+          proofUrl: proofImage,
+          tenantId: tenant.id,
+          tenantName: tenant.name,
+          landlordId: tenant.landlordId,
+          status: 'En attente',
+          createdAt: now
+        });
+      }
+
+      // 2. Add to payments
+      await addDoc(collection(db, 'payments'), paymentRecord);
+
+      // Save preference
+      try {
+        localStorage.setItem('tenant_paymentProvider', paymentProvider);
+        localStorage.setItem('tenant_accountNumber', accountNumber);
+      } catch (_e) {
+        void _e;
+      }
+
       setPaymentResult('success');
       setPaymentStep(4);
-      
-      // Fire and forget to avoid 10s timeout on poor connections blocking UI
-      addDoc(collection(db, 'payments'), paymentData).catch(err => {
-        console.error("Erreur de synchro en arrière-plan:", err);
-      });
-      
+
     } catch (err: any) {
-      console.error(err);
-      setFailReason('Erreur lors du traitement. Veuillez réessayer.');
+      console.error("Payment error", err);
+      setFailReason("Une erreur est survenue lors de l'enregistrement de votre paiement. Veuillez réessayer.");
       setPaymentResult('error');
       setPaymentStep(4);
     } finally {
@@ -262,41 +571,68 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
     }
   };
 
-  const handleSimulatePayment = async () => {
-    if (!tenant) return;
-    setLoading(true);
-    setPaymentResult('');
-    setFailReason('');
+  // Maintenance Incident Submission
+  const handleReportIssue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenant || !issueTitle || !issueDesc.trim()) return;
 
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    await processPayment();
+    setSubmittingIssue(true);
+    try {
+      const now = new Date().toISOString();
+      const newIssue: any = {
+        title: issueTitle,
+        description: issueDesc.trim(),
+        priority: issuePriority,
+        propertyName: tenant.propertyName || 'Logement',
+        propertyId: tenant.propertyId || '',
+        tenantName: tenant.name,
+        tenantId: tenant.id,
+        landlordId: tenant.landlordId,
+        status: 'En attente',
+        createdAt: now,
+        updatedAt: now
+      };
+
+      if (issuePhotoUrl) {
+        newIssue.photoUrl = issuePhotoUrl;
+      }
+
+      await addDoc(collection(db, 'maintenance'), newIssue);
+
+      setIssueTitle('Eau');
+      setIssueDesc('');
+      setIssuePhotoUrl('');
+      setIssuePriority('Normale');
+      alert("Votre signalement a été transmis avec succès à votre bailleur.");
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'envoi du signalement. Veuillez vérifier votre connexion.");
+    } finally {
+      setSubmittingIssue(false);
+    }
   };
 
+  // Tenant feedback on landlord's resolution
   const handleTenantActionOnMaintenance = async (issue: any, action: string, responseDesc?: string) => {
     if (!tenant) return;
     setLoading(true);
-    
     try {
       const issueRef = doc(db, 'maintenance', issue.id);
-      
       const updates: any = {
         status: action,
         updatedAt: new Date().toISOString()
       };
-      
       if (responseDesc) {
         updates.tenantResponse = responseDesc;
       }
 
-      // If resolved, deduct from guarantee
       if (action === 'Résolu') {
         const cost = Number(issue.cost || 0);
         if (cost > 0) {
           const tenantRef = doc(db, 'tenants', tenant.id);
           const newGuarantee = Number(tenant.guaranteeAmount || 0) - cost;
           await updateDoc(tenantRef, { guaranteeAmount: newGuarantee });
-          
+
           const now = new Date().toISOString();
           await addDoc(collection(db, 'payments'), {
             amount: -cost,
@@ -306,114 +642,143 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
             notes: `Frais pour la résolution du problème : ${issue.title}`,
             tenantId: tenant.id,
             landlordId: tenant.landlordId,
+            createdAt: now,
+            status: 'Validé'
+          });
+
+          await addDoc(collection(db, 'expenses'), {
+            amount: cost,
+            category: 'Entretien',
+            date: now,
+            description: `Frais de travaux déduits de la garantie (Problème : ${issue.title})`,
+            landlordId: tenant.landlordId,
+            tenantId: tenant.id,
+            propertyId: tenant.propertyId || '',
             createdAt: now
           });
-          
-          await addDoc(collection(db, 'expenses'), {
-             amount: cost,
-             category: 'Entretien',
-             date: now,
-             description: `Frais de travaux déduits de la garantie (Problème : ${issue.title})`,
-             landlordId: tenant.landlordId,
-             tenantId: tenant.id,
-             propertyId: tenant.propertyId || '',
-             createdAt: now
-          });
-          
+
           setTenant({ ...tenant, guaranteeAmount: newGuarantee });
         }
       }
 
       await updateDoc(issueRef, updates);
-      setMaintenances(prev => prev.map(m => m.id === issue.id ? { ...m, ...updates } : m));
-      
       setRespondingIssueId(null);
       setTenantResponseTargetStatus('');
       setTenantResponseText('');
-      alert(action === 'Résolu' ? "Problème marqué comme résolu." : "Statut mis à jour.");
-      
+      alert(action === 'Résolu' ? "Signalement clôturé avec succès." : "Statut actualisé.");
     } catch (e) {
       console.error(e);
-      alert("Erreur lors de la mise à jour");
+      alert("Erreur lors de l'enregistrement de votre réponse.");
     } finally {
       setLoading(false);
     }
   };
 
-  const updateIssueStatus = async (issueId: string, newStatus: string) => {
-    try {
-      await updateDoc(doc(db, 'maintenance', issueId), {
-        status: newStatus,
-        updatedAt: new Date().toISOString()
-      });
-      setMaintenances(prev => prev.map(m => m.id === issueId ? { ...m, status: newStatus } : m));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleReportIssue = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tenant || !issueTitle || !issueDesc) return;
+  // Self-deletion of tenant account
+  const handleDeleteTenantAccount = async () => {
+    if (!tenant) return;
     setLoading(true);
     try {
-      const now = new Date().toISOString();
-      const newIssue: any = {
-        title: issueTitle,
-        description: issueDesc,
-        propertyName: tenant.propertyName || 'Inconnu',
-        propertyId: tenant.propertyId || '',
-        tenantName: tenant.name,
-        tenantId: tenant.id,
-        landlordId: tenant.landlordId,
-        status: 'En attente',
-        priority: 'Normale',
-        createdAt: now,
-        updatedAt: now
-      };
-      if (issuePhotoUrl) newIssue.photoUrl = issuePhotoUrl;
-      const mRef = await addDoc(collection(db, 'maintenance'), newIssue);
-      setMaintenances(prev => [{id: mRef.id, ...newIssue}, ...prev]);
-      setIssueTitle('');
-      setIssueDesc('');
-      setIssuePhotoUrl('');
-      alert("Votre problème a été signalé avec succès au propriétaire.");
-      setActiveTab('dashboard');
-    } catch (e) {
-      alert("Erreur lors de l'envoi");
+      // 1. Delete tenant doc
+      await deleteDoc(doc(db, 'tenants', tenant.id));
+      
+      // 2. If user is logged in with Firebase Auth, attempt to delete their auth doc
+      if (auth.currentUser) {
+        try {
+          await deleteDoc(doc(db, 'users', auth.currentUser.uid));
+          await auth.currentUser.delete();
+        } catch {
+          await auth.signOut();
+        }
+      }
+
+      alert("Votre compte locataire et vos informations personnelles ont été définitivement supprimés.");
+      navigate('/');
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de la suppression du compte.");
     } finally {
       setLoading(false);
     }
   };
 
-  const updateMaintenanceStatus = async (issueId: string, status: string) => {
-    try {
-      await updateDoc(doc(db, 'maintenance', issueId), { status, updatedAt: new Date().toISOString() });
-      setMaintenances(prev => prev.map(m => m.id === issueId ? { ...m, status } : m));
-    } catch (error) {
-      alert("Erreur lors de la mise à jour");
-    }
-  };
+  // 1. LANDLORD SECURITY BLOCK SCREEN
+  if (isLandlordBlocked) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl border border-gray-100 space-y-6">
+          <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+            <ShieldAlert className="w-10 h-10" />
+          </div>
 
+          <div className="space-y-2">
+            <span className="text-[11px] font-black tracking-widest text-rose-600 uppercase px-3 py-1 bg-rose-50 rounded-full border border-rose-100">
+              Protection Stricte du Locataire
+            </span>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+              Accès Réservé au Locataire
+            </h1>
+            <p className="text-sm text-gray-600 leading-relaxed text-justify">
+              Vous êtes actuellement connecté avec un compte <strong>Bailleur / Propriétaire</strong>. 
+              Pour garantir la stricte indépendance, la conformité juridique et empêcher toute altération des informations du locataire, 
+              le bailleur <strong>ne peut pas accéder</strong> à l'espace personnel du locataire.
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 text-xs text-slate-700 text-left space-y-1.5">
+            <p className="font-bold flex items-center gap-1.5 text-slate-900">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" /> Transmission Sécurisée
+            </p>
+            <p>
+              Transmettez ce lien à votre locataire par <strong>WhatsApp</strong> ou par <strong>Email</strong>. 
+              Lui seul pourra s'y connecter et enregistrer ses justificatifs.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Building2 className="w-4 h-4" />
+              Retourner à mon Espace Bailleur
+            </button>
+
+            <button
+              onClick={async () => {
+                await auth.signOut();
+                window.location.reload();
+              }}
+              className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-xs transition-colors cursor-pointer"
+            >
+              Se déconnecter du compte bailleur
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. MANUAL CODE PROMPT IF NO TENANT ID IN URL
   if (!tenantId) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] p-4 font-sans text-gray-900">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full text-center">
-          <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3">
-             <Building2 className="w-8 h-8" />
+      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] p-4 text-gray-900">
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full text-center border border-gray-100">
+          <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Building2 className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2 tracking-tight">Espace Locataire</h1>
-          <p className="text-sm text-gray-500 mb-8">Veuillez entrer votre code d'accès pour vous connecter à votre portail.</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Espace Locataire</h1>
+          <p className="text-sm text-gray-500 mb-6">Saisissez votre code d'accès personnel pour ouvrir votre portail locataire.</p>
           <input 
             type="text" 
             value={manualCode} 
             onChange={e => setManualCode(e.target.value)} 
             placeholder="Code locataire..." 
-            className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none mb-4 text-center font-bold tracking-widest text-lg"
+            className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none mb-4 text-center font-bold tracking-widest text-lg focus:border-indigo-500"
           />
           <button 
-            onClick={() => { if(manualCode.trim()){ window.location.href=`/pay/${manualCode.trim()}`; } }}
-            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors"
+            onClick={() => { if (manualCode.trim()) { navigate(`/pay/${manualCode.trim()}`); } }}
+            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-colors cursor-pointer"
           >
             Se Connecter
           </button>
@@ -422,689 +787,1271 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
     );
   }
 
+  // 3. LOADING SPINNER
   if (loading && !tenant) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f8fafc] space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        <p className="text-sm font-semibold text-gray-600">Chargement de votre espace sécurisé...</p>
       </div>
     );
   }
 
+  // 4. ERROR STATE
   if (error || !tenant) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] p-4 text-center">
-        <div className="bg-white p-8 rounded-3xl shadow-lg max-w-sm w-full space-y-4">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 text-2xl font-bold">!</div>
-          <h2 className="text-2xl font-bold text-gray-900">Oups</h2>
-          <p className="text-gray-500">{error || 'Locataire introuvable.'}</p>
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-sm w-full space-y-4 border border-gray-100">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Lien Invalide</h2>
+          <p className="text-gray-500 text-sm leading-relaxed">{error || 'Le locataire demandé est introuvable.'}</p>
+          <button
+            onClick={() => navigate('/')}
+            className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm"
+          >
+            Retour à l'accueil
+          </button>
         </div>
       </div>
     );
   }
 
-  const rentPayments = payments.filter((p: any) => p.type === 'Loyer');
-  const paidRent = rentPayments.reduce((acc, p) => acc + Number(p.amount), 0);
-  const dToday = new Date();
-  const dateEntry = new Date(tenant.entryDate || dToday);
-  const diffMonths = (dToday.getFullYear() - dateEntry.getFullYear()) * 12 + (dToday.getMonth() - dateEntry.getMonth() + 1);
-  const expectedRent = Math.max(1, diffMonths) * (Number(tenant.monthlyRent) || 0);
-  const balance = expectedRent - paidRent;
-  const unpaidMonths = Math.max(0, Math.ceil(balance / (Number(tenant.monthlyRent) || 1)));
-
-  const waterAmount = Number(tenant.waterAmount) || 0;
-  const electAmount = Number(tenant.electricityAmount) || 0;
-  const syndicAmount = Number(tenant.syndicAmount) || 0;
-  
-  const totalExpenses = waterAmount + electAmount + syndicAmount;
-  const totalAmountDuePerMonth = (Number(tenant.monthlyRent) || 0) + totalExpenses;
-
-  const currentMonthStart = new Date(dToday.getFullYear(), dToday.getMonth(), 1);
-  const paidThisMonth = payments.filter(p => new Date(p.date) >= currentMonthStart).reduce((acc, p) => acc + Number(p.amount), 0);
-  const remainingThisMonth = Math.max(0, totalAmountDuePerMonth - paidThisMonth);
-  const isLate = dToday.getDate() >= 25 && remainingThisMonth > 0;
-
   return (
-    <div className="min-h-screen bg-[#f8fafc] pb-40">
+    <div className="min-h-screen bg-[#f8fafc] pb-36 text-gray-900">
       <InstallPrompt />
+
+      {/* Realtime Notification Banner from Landlord */}
       {tenant.hasNewUpdates && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-6 py-3 flex items-center justify-between z-10 relative">
-          <p className="text-sm text-yellow-800 flex-1 pr-4">Votre propriétaire a récemment mis à jour vos informations ou votre contrat.</p>
+        <div className="bg-amber-500 text-white px-6 py-2.5 flex items-center justify-between z-20 relative text-xs sm:text-sm font-medium shadow-sm">
+          <span>Votre bailleur a mis à jour votre dossier ou votre contrat locatif.</span>
           <button 
             onClick={() => updateDoc(doc(db, 'tenants', tenant.id), { hasNewUpdates: false })}
-            className="text-yellow-800 text-sm font-semibold underline whitespace-nowrap"
+            className="text-white underline font-bold ml-4 cursor-pointer hover:opacity-90"
           >
-            Masquer
+            Compris
           </button>
         </div>
       )}
-      <div className="bg-indigo-600 text-white px-6 pt-8 pb-24 relative rounded-b-[40px] shadow-sm">
-        <div className="flex justify-between items-center mb-6">
+
+      {/* Top Header Card */}
+      <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-blue-900 text-white px-6 pt-8 pb-24 rounded-b-[40px] shadow-sm relative">
+        <div className="max-w-md mx-auto flex justify-between items-center mb-4">
           <div>
-            <p className="text-indigo-100 text-sm mb-1">Espace Locataire</p>
-            <h1 className="text-2xl font-bold tracking-tight leading-none">{tenant.name}</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/20 text-white">
+                Portail Locataire Sécurisé
+              </span>
+            </div>
+            <h1 className="text-2xl font-black tracking-tight leading-none text-white">{tenant.name}</h1>
           </div>
-          <div className="flex items-center gap-3">
-             <Building2 className="w-8 h-8 opacity-90 text-indigo-100" />
+          <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
+            <Building2 className="w-6 h-6 text-indigo-100" />
           </div>
         </div>
-        <p className="opacity-90 flex items-center gap-2 text-sm"><span className="w-2 h-2 rounded-full bg-green-400"></span> {tenant.address}</p>
+        <p className="max-w-md mx-auto opacity-90 flex items-center gap-2 text-xs sm:text-sm text-indigo-100">
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 
+          {tenant.address || 'Logement conventionné'}
+        </p>
       </div>
 
-      <div className="max-w-md mx-auto px-4 -mt-16 relative z-10">
-        
+      <div className="max-w-md mx-auto px-4 -mt-16 relative z-10 space-y-4">
+
+        {/* ======================================================== */}
+        {/* TAB 1: DASHBOARD (ACCUEIL) */}
+        {/* ======================================================== */}
         {activeTab === 'dashboard' && (
           <div className="space-y-4">
-            <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-              <div className="flex gap-4">
-                <div className="flex-1 bg-red-50 p-4 rounded-2xl border border-red-100 flex flex-col justify-between">
-                   <p className="text-xs text-red-600 font-bold uppercase tracking-wider mb-1">Mois impayés</p>
-                   <div>
-                     <p className="text-2xl font-black text-red-700">{unpaidMonths}</p>
-                     {balance > 0 && <p className="text-xs text-red-600 mt-1 font-bold">Dette: {balance} $</p>}
-                   </div>
-                </div>
-                <div className="flex-1 bg-green-50 p-4 rounded-2xl border border-green-100">
-                   <p className="text-xs text-green-600 font-bold uppercase tracking-wider mb-1">Garantie</p>
-                   <p className="text-lg font-black text-green-700">{tenant.guaranteeAmount} $</p>
-                   <p className="text-xs text-green-600 mt-1">{tenant.guaranteeStatus}</p>
-                </div>
+
+            {/* Status Card for Current Month's Rent */}
+            <div className={`p-5 rounded-3xl shadow-sm border transition-all ${
+              remainingThisMonth === 0 
+                ? 'bg-gradient-to-br from-emerald-600 to-teal-800 text-white border-emerald-500'
+                : isLate
+                ? 'bg-gradient-to-br from-rose-600 to-red-800 text-white border-red-500'
+                : 'bg-gradient-to-br from-indigo-700 via-blue-800 to-slate-900 text-white border-indigo-600'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase font-black tracking-wider px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+                  {remainingThisMonth === 0 ? "Statut : À Jour ✅" : isLate ? "Retard de Paiement ⚠️" : "Échéance en cours ⏳"}
+                </span>
+                <span className="text-xs font-semibold text-white/90">
+                  {dToday.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                </span>
               </div>
-              <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100 flex justify-between items-center">
+
+              <div className="flex items-baseline justify-between mt-3">
                 <div>
-                  <p className="text-sm text-gray-500 mb-1">Montant Loyer</p>
-                  <h3 className="text-2xl font-bold text-gray-900">{tenant.monthlyRent || 0} $</h3>
+                  <p className="text-xs text-white/80">
+                    {remainingThisMonth === 0 ? "Loyer mensuel habituel :" : "Reste à régler ce mois :"}
+                  </p>
+                  <h2 className="text-3xl font-black text-white tracking-tight mt-0.5">
+                    {remainingThisMonth === 0 ? `${totalAmountDuePerMonth} $` : `${remainingThisMonth} $`}
+                  </h2>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500 mb-0.5">Eau: {waterAmount} $</p>
-                  <p className="text-xs text-gray-500 mb-0.5">Électricité: {electAmount} $</p>
-                  <p className="text-xs text-gray-500 font-bold border-t border-gray-200 mt-1 pt-1">Dépenses: {totalExpenses} $</p>
-                </div>
+                {remainingThisMonth > 0 && (
+                  <button
+                    onClick={() => {
+                      setPaymentType('Loyer');
+                      setPaymentAmount(String(remainingThisMonth));
+                      setPaymentStep(1);
+                      setActiveTab('pay');
+                    }}
+                    className="py-2.5 px-4 bg-white text-gray-950 font-black text-xs rounded-xl shadow-lg hover:bg-gray-100 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Régler</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              <div className="mt-2 p-3 bg-indigo-50 rounded-xl border border-indigo-100 flex justify-between items-center">
-                <span className="text-sm font-semibold text-indigo-900">Total Mensuel</span>
-                <span className="font-black text-indigo-700">{totalAmountDuePerMonth} $</span>
-              </div>
-              
-              {unpaidMonths > 0 && (
-                <div className="mt-4 p-4 bg-red-50 rounded-2xl border border-red-100">
-                  <h4 className="font-bold text-red-800 flex items-center gap-2 mb-2">
-                     <span className="w-2 h-2 rounded-full bg-red-600"></span> 
-                     Informations sur les impayés
-                  </h4>
-                  <p className="text-sm text-red-700">Vous avez un retard de <strong>{unpaidMonths} mois</strong> de loyer.</p>
-                  <p className="text-sm text-red-700 mt-1">Dette cumulée restante (Loyer uniquement) : <strong>{balance} $</strong></p>
-                  <p className="text-xs text-red-600 font-medium mt-2 italic">*Pensez à régulariser vos retards de paiement (un mois ou partiel) pour éviter toute procédure.</p>
-                </div>
-              )}
-              
-              {remainingThisMonth > 0 && (
-                <div className="mt-2 p-3 bg-blue-50 rounded-xl border border-blue-100 flex justify-between items-center">
-                  <span className="text-sm font-semibold text-blue-900">Reste à payer ce mois</span>
-                  <span className="font-black text-blue-700">{remainingThisMonth} $</span>
-                </div>
-              )}
-              
-              {isLate && (
-                <div className="mt-2 p-3 bg-red-100 rounded-xl border border-red-200">
-                  <p className="text-sm font-bold text-red-800">Retard de Paiement ⚠️</p>
-                  <p className="text-xs text-red-700 mt-1">Vous n'avez pas encore réglé la totalité des frais pour ce mois. Veuillez régulariser votre situation avant la fin du mois.</p>
-                </div>
-              )}
 
+              <p className="text-[11px] text-white/90 mt-3 pt-2.5 border-t border-white/20">
+                {remainingThisMonth === 0
+                  ? "Votre loyer et vos charges de ce mois sont entièrement soldés. Merci pour votre ponctualité !"
+                  : isLate
+                  ? `Dépassement constaté ! Il vous reste ${remainingThisMonth} $ à payer. Veuillez régulariser au plus vite.`
+                  : `Loyer de base (${tenant.monthlyRent} $) + Charges eau & élec (${totalMonthlyCharges} $).`}
+              </p>
             </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => { setPaymentType('Loyer'); setPaymentAmount(tenant.monthlyRent); setPaymentStep(1); setActiveTab('pay'); }} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <Building2 className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Loyer</p>
-                </button>
-                <button onClick={() => { setPaymentType('Eau'); setPaymentAmount(tenant.waterAmount ? String(tenant.waterAmount) : ''); setPaymentStep(1); setActiveTab('pay'); }} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <Droplets className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Eau</p>
-                </button>
-                <button onClick={() => { setPaymentType('Électricité'); setPaymentAmount(tenant.electricityAmount ? String(tenant.electricityAmount) : ''); setPaymentStep(1); setActiveTab('pay'); }} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <Zap className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Électricité</p>
-                </button>
-                <button onClick={() => { setPaymentType('Frais syndics'); setPaymentAmount(tenant.syndicAmount ? String(tenant.syndicAmount) : ''); setPaymentStep(1); setActiveTab('pay'); }} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <ShieldCheck className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Syndic</p>
-                </button>
-                <button onClick={() => { setPaymentType('Autre'); setPaymentAmount(tenant.otherAmount ? String(tenant.otherAmount) : ''); setPaymentStep(1); setActiveTab('pay'); }} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <CreditCard className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Autres Frais</p>
-                </button>
-                <button onClick={() => setActiveTab('report')} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <Wrench className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Signaler</p>
-                </button>
-                <button onClick={() => setActiveTab('contract')} className="bg-white p-4 rounded-3xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 outline-none">
-                   <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                     <Receipt className="w-5 h-5" />
-                   </div>
-                   <p className="font-semibold text-gray-900 text-sm">Contrat</p>
-                </button>
+            {/* SYNTHESIS WIDGET: MES PAIEMENTS (Requested by User) */}
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-gray-900">Synthèse : Mes Paiements</h3>
+                    <p className="text-[11px] text-gray-500">Bilan financier en temps réel</p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                  Année {currentYear}
+                </span>
               </div>
-            
+
+              {/* Total Paid This Year Metric */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 bg-gradient-to-br from-indigo-50/70 to-blue-50/50 rounded-2xl border border-indigo-100/60">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Total versé ({currentYear})</span>
+                  <p className="text-2xl font-black text-indigo-950 mt-1">
+                    {totalPaidThisYear.toLocaleString()} $
+                  </p>
+                  <p className="text-[10px] text-indigo-500 mt-0.5">Cumul des reçus validés</p>
+                </div>
+
+                <div className="p-3.5 bg-gradient-to-br from-slate-50 to-gray-50 rounded-2xl border border-gray-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Quittances</span>
+                  <p className="text-2xl font-black text-gray-900 mt-1">
+                    {payments.filter(p => p.status !== 'Rejeté').length}
+                  </p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Documents PDF officiels</p>
+                </div>
+              </div>
+
+              {/* Visual Progress Bar for Monthly Rent */}
+              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-gray-700">Loyer du mois ({dToday.toLocaleDateString('fr-FR', { month: 'short' })})</span>
+                  <span className="font-black text-indigo-600">
+                    {paidThisMonthForRent} $ / {monthlyRentNumber} $ ({rentProgressPercent}%)
+                  </span>
+                </div>
+
+                {/* The Progress Bar Track */}
+                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden relative">
+                  <div 
+                    className={`h-full transition-all duration-700 rounded-full ${
+                      rentProgressPercent >= 100 
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-500' 
+                        : rentProgressPercent > 0 
+                        ? 'bg-gradient-to-r from-indigo-500 to-blue-600' 
+                        : 'bg-rose-400'
+                    }`}
+                    style={{ width: `${rentProgressPercent}%` }}
+                  />
+                </div>
+
+                <div className="flex justify-between items-center text-[10px] text-gray-500 pt-1">
+                  <span>0 $</span>
+                  <span className={`font-bold ${rentProgressPercent >= 100 ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {rentProgressPercent >= 100 ? '✓ Soldé à 100%' : `${monthlyRentNumber - paidThisMonthForRent} $ restant`}
+                  </span>
+                  <span>{monthlyRentNumber} $</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial Overview Cards */}
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-               <div className="flex justify-between items-center mb-4">
-                 <h3 className="font-bold text-gray-900">Paiements Récents</h3>
-                 <button onClick={() => setActiveTab('history')} className="text-indigo-600 text-sm font-medium">Voir tout</button>
-               </div>
-               <div className="space-y-3">
-                 {payments.slice(0,3).map((p: any) => (
-                   <div key={p.id} className="flex justify-between items-center border-b border-gray-50 pb-3 last:border-0 last:pb-0">
-                     <div className="flex items-center gap-3">
-                       <div className={`p-2 rounded-full ${p.type === 'Loyer' ? 'bg-indigo-100 text-indigo-600' : p.type === 'Eau' ? 'bg-blue-100 text-blue-600' : p.type === 'Électricité' ? 'bg-yellow-100 text-yellow-600' : 'bg-gray-100 text-gray-600'}`}>
-                         <Receipt className="w-4 h-4" />
-                       </div>
-                       <div>
-                         <p className="font-semibold text-gray-900 text-sm">{p.type}</p>
-                         <p className="text-xs text-gray-500">{new Date(p.date).toLocaleDateString()}</p>
-                       </div>
-                     </div>
-                     <span className="font-bold text-gray-900">{p.amount} $</span>
-                   </div>
-                 ))}
-                 {payments.length === 0 && <p className="text-sm text-gray-500 text-center py-2">Aucun paiement récent.</p>}
-               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-red-50 p-3.5 rounded-2xl border border-red-100 flex flex-col justify-between">
+                  <p className="text-[10px] text-red-600 font-bold uppercase tracking-wider mb-1">Mois impayés</p>
+                  <div>
+                    <p className="text-xl font-black text-red-700">{unpaidMonths}</p>
+                    {balanceDebt > 0 && <p className="text-[11px] text-red-600 font-bold mt-0.5">Dette: {balanceDebt} $</p>}
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 p-3.5 rounded-2xl border border-emerald-100 flex flex-col justify-between">
+                  <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Garantie locative</p>
+                  <div>
+                    <p className="text-xl font-black text-emerald-700">{tenant.guaranteeAmount || 0} $</p>
+                    <p className="text-[11px] text-emerald-600 font-semibold mt-0.5">{tenant.guaranteeStatus || 'Payée'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 p-3.5 bg-gray-50 rounded-2xl border border-gray-100 flex justify-between items-center">
+                <div>
+                  <p className="text-xs text-gray-500 mb-0.5">Loyer conventionné</p>
+                  <h4 className="text-xl font-bold text-gray-900">{tenant.monthlyRent || 0} $</h4>
+                </div>
+                <div className="text-right text-[11px] text-gray-500 space-y-0.5">
+                  <p>Eau: <strong className="text-gray-800">{waterAmount} $</strong></p>
+                  <p>Élec: <strong className="text-gray-800">{electAmount} $</strong></p>
+                  <p className="font-bold border-t border-gray-200 pt-0.5 text-gray-800">Charges: {totalMonthlyCharges} $</p>
+                </div>
+              </div>
             </div>
+
+            {/* Quick Actions Grid */}
+            <div className="grid grid-cols-3 gap-2.5">
+              <button 
+                onClick={() => { 
+                  setPaymentType('Loyer'); 
+                  setPaymentAmount(tenant.monthlyRent); 
+                  setPaymentStep(1); 
+                  setActiveTab('pay'); 
+                }} 
+                className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mx-auto mb-1.5">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <p className="font-bold text-gray-900 text-xs">Payer Loyer</p>
+              </button>
+
+              <button 
+                onClick={() => { 
+                  setPaymentType('Tous les frais du mois'); 
+                  setPaymentAmount(String(remainingThisMonth || totalAmountDuePerMonth)); 
+                  setPaymentStep(1); 
+                  setActiveTab('pay'); 
+                }} 
+                className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <div className="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mx-auto mb-1.5">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <p className="font-bold text-gray-900 text-xs">Tout Réglé</p>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('report')} 
+                className="bg-white p-3.5 rounded-2xl shadow-sm border border-gray-100 text-center hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <div className="w-9 h-9 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mx-auto mb-1.5">
+                  <Wrench className="w-4 h-4" />
+                </div>
+                <p className="font-bold text-gray-900 text-xs">Incident</p>
+              </button>
+            </div>
+
+            {/* Simplified Payment History */}
+            <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 space-y-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-extrabold text-sm text-gray-900">Derniers Paiements</h3>
+                  <p className="text-[11px] text-gray-500">Quittances téléchargeables</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-700 cursor-pointer"
+                >
+                  Voir tout ({payments.length})
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {payments.slice(0, 4).map((p: any) => (
+                  <div key={p.id} className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between gap-3 hover:bg-gray-100/70 transition-colors">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs ${
+                        p.status === 'En attente' ? 'bg-amber-100 text-amber-700' :
+                        p.status === 'Rejeté' ? 'bg-rose-100 text-rose-700' :
+                        'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {p.status === 'En attente' ? <Clock className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-xs text-gray-900 truncate">{p.type || 'Loyer'}</p>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                            p.status === 'En attente' ? 'bg-amber-100 text-amber-700' :
+                            p.status === 'Rejeté' ? 'bg-rose-100 text-rose-700' :
+                            'bg-emerald-100 text-emerald-700'
+                          }`}>
+                            {p.status || 'Validé'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                          {new Date(p.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} • {p.method || 'Mobile Money'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-black text-sm text-gray-900">+{p.amount} $</span>
+                      <button
+                        onClick={() => downloadSingleReceipt(p, tenant)}
+                        className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="Télécharger la quittance PDF"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {payments.length === 0 && (
+                  <p className="text-center text-gray-400 text-xs py-4">
+                    Aucun règlement enregistré pour le moment.
+                  </p>
+                )}
+              </div>
+            </div>
+
           </div>
         )}
 
+        {/* ======================================================== */}
+        {/* TAB 2: ESPACE PAIEMENT (MODERNISÉ AVEC PREUVES & VISA) */}
+        {/* ======================================================== */}
         {activeTab === 'pay' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <button onClick={() => { if(paymentStep > 1) setPaymentStep(paymentStep - 1); else setActiveTab('dashboard'); }} className="p-2 hover:bg-gray-100 rounded-full">
-                <ChevronRight className="w-5 h-5 rotate-180 text-gray-500" />
-              </button>
-              <h2 className="text-xl font-bold text-gray-900">Paiement</h2>
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => { if (paymentStep > 1) setPaymentStep(paymentStep - 1); else setActiveTab('dashboard'); }} 
+                  className="p-2 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-5 h-5 rotate-180 text-gray-500" />
+                </button>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Règlement du Loyer</h2>
+                  <p className="text-xs text-gray-500">Étape {paymentStep} sur 3</p>
+                </div>
+              </div>
+              <span className="text-xs font-bold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full">
+                {paymentType}
+              </span>
             </div>
 
-            {paymentStep === 1 && (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type de paiement</label>
-                <select value={paymentType} onChange={e => { 
-                  const v = e.target.value;
-                  setPaymentType(v); 
-                  if(v === 'Loyer') setPaymentAmount(tenant.monthlyRent); 
-                  else if(v === 'Tous les frais du mois') setPaymentAmount(String(remainingThisMonth));
-                  else if(v === 'Eau') setPaymentAmount(tenant.waterAmount ? String(tenant.waterAmount) : ''); 
-                  else if(v === 'Électricité') setPaymentAmount(tenant.electricityAmount ? String(tenant.electricityAmount) : ''); 
-                  else if(v === 'Frais syndics') setPaymentAmount(tenant.syndicAmount ? String(tenant.syndicAmount) : '');
-                  else if(v === 'Internet / Networks') setPaymentAmount(tenant.networkAmount ? String(tenant.networkAmount) : '');
-                  else if(v === 'Entretien') setPaymentAmount(tenant.cleaningAmount ? String(tenant.cleaningAmount) : '');
-                  else if(v === 'Autre') setPaymentAmount(tenant.otherAmount ? String(tenant.otherAmount) : '');
-                  else setPaymentAmount(''); 
-                }} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none">
-                  <option>Loyer</option>
-                  <option>Tous les frais du mois</option>
-                  <option>Eau</option>
-                  <option>Électricité</option>
-                  <option>Frais syndics</option>
-                  <option>Internet / Networks</option>
-                  <option>Entretien</option>
-                  <option>Autre</option>
-                </select>
+            {/* Duplicate warning banner */}
+            {duplicateWarning && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-amber-800">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  Paiement Déjà Existant ce Mois-ci
+                </div>
+                <p>{duplicateWarning}</p>
+                <button
+                  onClick={() => setDuplicateWarning(null)}
+                  className="text-amber-800 font-bold underline"
+                >
+                  Fermer
+                </button>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Montant ($)</label>
-                {(unpaidMonths > 0 && paymentType === 'Loyer') && (
-                  <div className="mb-2 p-3 border-l-4 border-orange-500 bg-orange-50 text-orange-800 text-sm rounded-lg">
-                    <strong>Attention :</strong> Ce paiement couvrira d'abord vos retards ({unpaidMonths} mois impayés).
-                  </div>
-                )}
-                {paymentType === 'Tous les frais du mois' && (
-                  <div className="mb-2 p-3 border-l-4 border-blue-500 bg-blue-50 text-blue-800 text-sm rounded-lg">
-                    Comprend le loyer, l'eau, l'électricité et tous les frais associés pour ce mois.
-                  </div>
-                )}
-                <input type="number" readOnly={paymentType === 'Loyer' || paymentType === 'Eau' || paymentType === 'Électricité' || paymentType === 'Tous les frais du mois'} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xl font-bold" />
-              </div>
-
-              <button disabled={!paymentAmount || Number(paymentAmount) <= 0} onClick={() => setPaymentStep(2)} className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-4 px-4 rounded-xl font-bold transition-colors disabled:opacity-50">
-                Payer {paymentAmount || '0'} $
-              </button>
-            </div>
             )}
 
+            {/* STEP 1: Montant et Type */}
+            {paymentStep === 1 && (
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                    Nature du versement
+                  </label>
+                  <select 
+                    value={paymentType} 
+                    onChange={e => { 
+                      const v = e.target.value;
+                      setPaymentType(v);
+                      setDuplicateWarning(null);
+                      if (v === 'Loyer') setPaymentAmount(String(tenant.monthlyRent || 0)); 
+                      else if (v === 'Tous les frais du mois') setPaymentAmount(String(remainingThisMonth || totalAmountDuePerMonth));
+                      else if (v === 'Eau') setPaymentAmount(String(waterAmount || 0)); 
+                      else if (v === 'Électricité') setPaymentAmount(String(electAmount || 0)); 
+                      else if (v === 'Frais syndics') setPaymentAmount(String(syndicAmount || 0));
+                      else if (v === 'Internet / Networks') setPaymentAmount(String(networkAmount || 0));
+                      else if (v === 'Entretien') setPaymentAmount(String(cleaningAmount || 0));
+                      else if (v === 'Autre') setPaymentAmount(String(otherAmount || 0));
+                    }} 
+                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm font-semibold text-gray-900"
+                  >
+                    <option value="Loyer">Loyer Conventionné ({tenant.monthlyRent} $)</option>
+                    <option value="Tous les frais du mois">Tous les frais du mois ({remainingThisMonth || totalAmountDuePerMonth} $)</option>
+                    <option value="Eau">Consommation Eau ({waterAmount} $)</option>
+                    <option value="Électricité">Électricité ({electAmount} $)</option>
+                    <option value="Frais syndics">Frais syndics ({syndicAmount} $)</option>
+                    <option value="Internet / Networks">Internet / Réseau ({networkAmount} $)</option>
+                    <option value="Entretien">Entretien ({cleaningAmount} $)</option>
+                    <option value="Autre">Autres charges ({otherAmount} $)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Montant fixé ($)
+                    </label>
+                    <span className="text-[11px] text-gray-400 font-medium">Montant officiel non modifiable</span>
+                  </div>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      value={`${paymentAmount} $`} 
+                      className="w-full p-4 bg-gray-100 border border-gray-200 rounded-xl outline-none text-2xl font-black text-gray-900 cursor-not-allowed select-none" 
+                    />
+                    <Lock className="w-4 h-4 text-gray-400 absolute right-4 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+
+                <button 
+                  disabled={!paymentAmount || Number(paymentAmount) <= 0} 
+                  onClick={() => {
+                    if (checkDuplicateForMonth(paymentType)) {
+                      setDuplicateWarning(
+                        `Un paiement pour "${paymentType}" est déjà enregistré ce mois-ci. Pour éviter tout doublon, vous ne pouvez pas effectuer deux fois ce même paiement.`
+                      );
+                      return;
+                    }
+                    setPaymentStep(2);
+                  }} 
+                  className="w-full py-4 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <span>Continuer pour {paymentAmount} $</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* STEP 2: Choix du Mode de Règlement */}
             {paymentStep === 2 && (
-            <div className="space-y-5">
-              <h3 className="font-bold text-gray-900">Mode de paiement</h3>
-              <button onClick={() => setPaymentMethod('Mobile Money')} className={`w-full flex items-center gap-4 p-4 rounded-2xl border ${paymentMethod === 'Mobile Money' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'} transition-all`}>
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center bg-indigo-100 text-indigo-600">
+              <div className="space-y-4">
+                <h3 className="font-bold text-sm text-gray-900">Sélectionnez le mode de règlement</h3>
+
+                {/* Option 1: Mobile Money */}
+                <button 
+                  onClick={() => setPaymentMethod('Mobile Money')} 
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left cursor-pointer ${
+                    paymentMethod === 'Mobile Money' ? 'border-indigo-600 bg-indigo-50/70 shadow-xs' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-indigo-100 text-indigo-600 shrink-0">
                     <Smartphone className="w-6 h-6" />
                   </div>
-                  <div className="text-left font-medium">
-                    <p className="text-gray-900">Mobile Money</p>
-                    <p className="text-xs text-gray-500">M-Pesa, Orange, Airtel</p>
+                  <div className="flex-1">
+                    <p className="font-bold text-gray-900 text-sm">Mobile Money</p>
+                    <p className="text-xs text-gray-500">M-Pesa, Orange Money, Airtel Money</p>
                   </div>
-              </button>
-              <button onClick={() => setPaymentMethod('Banque')} className={`w-full flex items-center gap-4 p-4 rounded-2xl border ${paymentMethod === 'Banque' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200'} transition-all`}>
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center bg-indigo-100 text-indigo-600">
+                  {paymentMethod === 'Mobile Money' && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
+                </button>
+
+                {/* Option 2: Carte Visa Seule */}
+                <button 
+                  onClick={() => setPaymentMethod('Carte Visa')} 
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left cursor-pointer ${
+                    paymentMethod === 'Carte Visa' ? 'border-indigo-600 bg-indigo-50/70 shadow-xs' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-blue-100 text-blue-600 shrink-0">
                     <CreditCard className="w-6 h-6" />
                   </div>
-                  <div className="text-left font-medium">
-                    <p className="text-gray-900">Carte Bancaire / Virement</p>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-gray-900 text-sm">Carte Visa</p>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800">Visa Uniquement</span>
+                    </div>
+                    <p className="text-xs text-gray-500">Paiement sécurisé par carte bancaire Visa</p>
                   </div>
-              </button>
-              <button disabled={!paymentMethod} onClick={() => setPaymentStep(3)} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold disabled:opacity-50">Continuer</button>
-            </div>
-            )}
+                  {paymentMethod === 'Carte Visa' && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
+                </button>
 
-            {paymentStep === 3 && (
-            <div className="space-y-4">
-              <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-sm text-indigo-800">
-                <p className="font-medium mb-1">Destinataire final:</p>
-                {paymentMethod === 'Mobile Money' ? (
-                  adminPaymentConfig?.mobileMoneyProvider ? (
-                    <p className="font-bold">✅ Compte propriétaire: {adminPaymentConfig.mobileMoneyProvider} ({'**' + (adminPaymentConfig.mobileMoneyPhone?.slice(-4) || '****')})</p>
-                  ) : (
-                    <p className="text-orange-600 font-bold">⚠️ Attention: Le propriétaire n'a pas configuré de compte Mobile Money.</p>
-                  )
-                ) : (
-                  adminPaymentConfig?.bankProvider ? (
-                    <p className="font-bold">✅ Compte propriétaire: {adminPaymentConfig.bankProvider} ({'**' + (adminPaymentConfig.bankAccountNumber?.slice(-4) || '****')})</p>
-                  ) : (
-                    <p className="text-orange-600 font-bold">⚠️ Attention: Le propriétaire n'a pas configuré de compte bancaire.</p>
-                  )
-                )}
+                {/* Option 3: Preuve directe / Capture d'écran */}
+                <button 
+                  onClick={() => setPaymentMethod('Preuve Photo')} 
+                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left cursor-pointer ${
+                    paymentMethod === 'Preuve Photo' ? 'border-indigo-600 bg-indigo-50/70 shadow-xs' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-emerald-100 text-emerald-600 shrink-0">
+                    <Camera className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-gray-900 text-sm">Preuve de Paiement / Capture</p>
+                    <p className="text-xs text-gray-500">Photo du reçu de banque ou capture d'écran du transfert</p>
+                  </div>
+                  {paymentMethod === 'Preuve Photo' && <CheckCircle2 className="w-5 h-5 text-indigo-600" />}
+                </button>
+
+                <button 
+                  onClick={() => setPaymentStep(3)} 
+                  className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors cursor-pointer shadow-md mt-4"
+                >
+                  Étape Suivante
+                </button>
               </div>
+            )}
 
-              <h3 className="font-bold text-gray-900 mt-2">Votre {paymentMethod === 'Mobile Money' ? 'numéro de téléphone' : 'numéro de compte'}</h3>
-              <p className="text-xs text-gray-500 -mt-3 mb-2">Configurez votre moyen de paiement pour ce transfert. (ex: tapez 0000 pour simuler un solde insuffisant)</p>
-              
-              <select value={paymentProvider} onChange={(e) => setPaymentProvider(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none">
-                <option value="">Sélectionner votre fournisseur...</option>
-                {paymentMethod === 'Mobile Money' ? (
-                  <>
-                    <option value="M-Pesa">M-Pesa</option>
-                    <option value="Airtel Money">Airtel Money</option>
-                    <option value="Orange Money">Orange Money</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="Carte Bancaire">Carte Visa / Mastercard</option>
-                    <option value="Virement">Virement Bancaire</option>
-                  </>
+            {/* STEP 3: Coordonnées & Envoi */}
+            {paymentStep === 3 && (
+              <div className="space-y-4">
+                {/* Landlord recipient notice */}
+                <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-xs text-indigo-900 space-y-1">
+                  <p className="font-bold uppercase tracking-wider text-[10px] text-indigo-700">Compte Récepteur du Bailleur</p>
+                  {paymentMethod === 'Mobile Money' ? (
+                    adminPaymentConfig?.mobileMoneyProvider ? (
+                      <p className="font-medium">
+                        ✅ Versement vers : <strong>{adminPaymentConfig.mobileMoneyProvider}</strong> ({'**' + (adminPaymentConfig.mobileMoneyPhone?.slice(-4) || '****')})
+                      </p>
+                    ) : (
+                      <p className="text-amber-700 font-semibold">⚠️ Le bailleur recevra la notification directe de votre versement.</p>
+                    )
+                  ) : paymentMethod === 'Carte Visa' ? (
+                    adminPaymentConfig?.bankProvider ? (
+                      <p className="font-medium">
+                        ✅ Compte bancaire récepteur : <strong>{adminPaymentConfig.bankProvider}</strong> ({'**' + (adminPaymentConfig.bankAccountNumber?.slice(-4) || '****')})
+                      </p>
+                    ) : (
+                      <p className="text-indigo-800">✅ Versement sécurisé direct sur le compte séquestre du bailleur.</p>
+                    )
+                  ) : (
+                    <p className="text-emerald-800 font-medium">
+                      📸 Votre bailleur validera immédiatement la quittance dès réception de votre preuve.
+                    </p>
+                  )}
+                </div>
+
+                {/* Sub-form according to payment method */}
+                {paymentMethod === 'Mobile Money' && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Opérateur Mobile Money
+                    </label>
+                    <select 
+                      value={paymentProvider} 
+                      onChange={e => setPaymentProvider(e.target.value)} 
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm font-semibold"
+                    >
+                      <option value="M-Pesa">M-Pesa (Vodacom)</option>
+                      <option value="Orange Money">Orange Money</option>
+                      <option value="Airtel Money">Airtel Money</option>
+                    </select>
+
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider pt-1">
+                      Numéro de téléphone expéditeur
+                    </label>
+                    <input 
+                      type="tel" 
+                      value={accountNumber} 
+                      onChange={e => setAccountNumber(e.target.value)} 
+                      placeholder="Ex: 0812345678" 
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm font-semibold"
+                    />
+                  </div>
                 )}
-              </select>
-              <input type="text" value={accountNumber} onChange={(e) => {
-                setAccountNumber(e.target.value);
-                setLocalItem('tenant_accountNumber', e.target.value);
-              }} placeholder={paymentMethod === 'Mobile Money' ? 'Votre Numéro de téléphone' : 'Votre Numéro de compte'} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none" />
-              
-              <button onClick={handleSimulatePayment} disabled={loading} className="w-full py-4 bg-green-600 text-white rounded-xl font-bold disabled:opacity-50 flex justify-center items-center gap-2">
-                {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>} Confirmer {paymentAmount} $
-              </button>
-            </div>
-            )}
 
-            {paymentStep === 4 && (
-            <div className="text-center py-6 space-y-4">
-              {paymentResult === 'success' ? (
-                <>
-                  <CheckCircle2 className="w-20 h-20 text-green-500 mx-auto" />
-                  <h2 className="text-2xl font-bold">Paiement Réussi !</h2>
-                  <p className="text-gray-500">Votre reçu a été enregistré.</p>
-                  <p className="text-sm font-medium text-gray-900 mt-2">{tenant.name} {tenant.phone ? `(${tenant.phone})` : ''}</p>
-                  <button onClick={() => { setActiveTab('dashboard'); setPaymentStep(1); }} className="mt-4 w-full py-4 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl font-bold transition-colors">Retour</button>
-                </>
-              ) : (
-                <>
-                  <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto text-red-600 text-4xl font-bold">!</div>
-                  <h2 className="text-2xl font-bold">Échec</h2>
-                  <p className="text-red-500">{failReason}</p>
-                  <button onClick={() => { setPaymentStep(3); setPaymentResult(''); }} className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-xl font-bold transition-colors">Réessayer</button>
-                </>
-              )}
-            </div>
-            )}
-          </div>
-        )}
+                {paymentMethod === 'Carte Visa' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
+                      <strong>Règle de sécurité :</strong> Seules les cartes portant le logo VISA sont autorisées pour ce compte.
+                    </div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Numéro de Carte Visa
+                    </label>
+                    <input 
+                      type="text" 
+                      value={accountNumber} 
+                      onChange={e => setAccountNumber(e.target.value)} 
+                      placeholder="4000 1234 5678 9010" 
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm font-semibold"
+                    />
+                  </div>
+                )}
 
-        {activeTab === 'history' && (
-          <HistoryTab tenant={tenant} items={[...payments, ...expenses.map(e => ({ ...e, isExpense: true, method: 'Déduit sur la garantie', type: e.category, notes: e.description }))]
-             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())} />
-        )}
+                {paymentMethod === 'Preuve Photo' && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Téléverser votre capture / photo du reçu
+                    </label>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleProofImageUpload(file);
+                      }}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-500"
+                    />
 
-        {activeTab === 'report' && (
-          <form onSubmit={handleReportIssue} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Signaler un problème</h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
-              <select required value={issueTitle} onChange={e => setIssueTitle(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none">
-                <option value="Eau">Eau</option>
-                <option value="Électricité">Électricité</option>
-                <option value="Ventilation">Ventilation</option>
-                <option value="Nuisance sonore">Nuisance sonore</option>
-                <option value="Insécurité">Insécurité</option>
-                <option value="Canalisation">Canalisation</option>
-                <option value="Lumière">Lumière</option>
-                <option value="Climatisation">Climatisation</option>
-                <option value="Plomberie">Plomberie</option>
-                <option value="Toiture">Toiture</option>
-                <option value="Entretien / Propreté">Entretien / Propreté</option>
-                <option value="Autre">Autre...</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea required rows={4} value={issueDesc} onChange={e => setIssueDesc(e.target.value)} placeholder="Détaillez votre demande..." className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none resize-none" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Photo (optionnelle)</label>
-              <input type="file" accept="image/*" onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onloadend = () => {
-                    const img = new Image();
-                    img.onload = () => {
-                      const canvas = document.createElement('canvas');
-                      let width = img.width;
-                      let height = img.height;
-                      const MAX_SIZE = 800;
-                      if (width > height && width > MAX_SIZE) {
-                        height *= MAX_SIZE / width;
-                        width = MAX_SIZE;
-                      } else if (height > MAX_SIZE) {
-                        width *= MAX_SIZE / height;
-                        height = MAX_SIZE;
-                      }
-                      canvas.width = width;
-                      canvas.height = height;
-                      const ctx = canvas.getContext('2d');
-                      ctx?.drawImage(img, 0, 0, width, height);
-                      setIssuePhotoUrl(canvas.toDataURL('image/jpeg', 0.6));
-                    };
-                    img.src = reader.result as string;
-                  };
-                  reader.readAsDataURL(file);
-                } else {
-                  setIssuePhotoUrl('');
-                }
-              }} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none" />
-            </div>
-            <button disabled={loading} type="submit" className="w-full py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold disabled:opacity-50">
-              {loading ? 'Envoi...' : 'Envoyer au propriétaire'}
-            </button>
-            <div className="mt-8">
-              <h3 className="font-bold text-gray-900 mb-3">Historique de vos signalements</h3>
-              <div className="space-y-3">
-               {maintenances.map((m: any) => (
-                 <div key={m.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-sm">
-                    <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-2 mb-2">
-                      <span className="font-bold text-gray-900">{m.title}</span>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
-                          m.status === 'Résolu' ? 'bg-green-100 text-green-700' :
-                          m.status === 'En cours' ? 'bg-blue-100 text-blue-700' :
-                          'bg-orange-100 text-orange-700'
-                        }`}>
-                          {m.status}
-                        </span>
-                        <button type="button" onClick={async (e) => {
-                          e.preventDefault();
-                          if (window.confirm('Voulez-vous supprimer ce signalement ? Cette action est irréversible.')) {
-                            try {
-                              await deleteDoc(doc(db, 'maintenance', m.id));
-                            } catch (error) {
-                              console.error('Error deleting issue', error);
-                            }
-                          }
-                        }} className="p-1.5 text-red-500 hover:bg-red-100 rounded-lg transition-colors" title="Supprimer ce signalement">
+                    {proofImage && (
+                      <div className="relative rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 p-2">
+                        <img src={proofImage} alt="Preuve" className="w-full h-44 object-contain rounded-xl" />
+                        <button
+                          type="button"
+                          onClick={() => setProofImage('')}
+                          className="absolute top-4 right-4 bg-red-600 text-white p-1.5 rounded-full shadow hover:bg-red-700"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
+                    )}
+
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider pt-1">
+                      Note ou Référence du virement (facultatif)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={proofNote} 
+                      onChange={e => setProofNote(e.target.value)} 
+                      placeholder="Ex: Virement bancaire n° 98234 effectué ce matin" 
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-sm"
+                    />
+                  </div>
+                )}
+
+                <button 
+                  onClick={handleSubmitPayment} 
+                  disabled={loading || (paymentMethod === 'Preuve Photo' && !proofImage)} 
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-md mt-4"
+                >
+                  {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+                  <span>Valider le paiement de {paymentAmount} $</span>
+                </button>
+              </div>
+            )}
+
+            {/* STEP 4: Confirmation Result */}
+            {paymentStep === 4 && (
+              <div className="text-center py-6 space-y-4">
+                {paymentResult === 'success' ? (
+                  <>
+                    <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+                      <CheckCircle2 className="w-10 h-10" />
                     </div>
-                    <p className="text-gray-700 mb-2 whitespace-pre-wrap leading-relaxed">{m.description}</p>
+                    <h2 className="text-2xl font-black text-gray-900">Paiement Enregistré !</h2>
+                    <p className="text-sm text-gray-600 max-w-xs mx-auto">
+                      Votre justificatif a été transmis au bailleur avec succès. Votre quittance est prête.
+                    </p>
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-xs text-gray-700 text-left space-y-1">
+                      <p><strong>Montant :</strong> {paymentAmount} $</p>
+                      <p><strong>Type :</strong> {paymentType}</p>
+                      <p><strong>Moyen :</strong> {paymentMethod}</p>
+                      <p><strong>Bénéficiaire :</strong> {tenant.name}</p>
+                    </div>
+
+                    <div className="pt-2 flex flex-col gap-2">
+                      <button 
+                        onClick={() => { setActiveTab('dashboard'); setPaymentStep(1); }} 
+                        className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors cursor-pointer"
+                      >
+                        Retour au Tableau de Bord
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('history')} 
+                        className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-xs transition-colors cursor-pointer"
+                      >
+                        Voir dans l'historique
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto">
+                      <AlertTriangle className="w-10 h-10" />
+                    </div>
+                    <h2 className="text-xl font-bold text-gray-900">Échec du Règlement</h2>
+                    <p className="text-sm text-rose-600">{failReason || "Une erreur est survenue."}</p>
+                    <button 
+                      onClick={() => { setPaymentStep(3); setPaymentResult(''); }} 
+                      className="mt-4 w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm transition-colors cursor-pointer"
+                    >
+                      Réessayer
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 3: HISTORIQUE DES PAIEMENTS */}
+        {/* ======================================================== */}
+        {activeTab === 'history' && (
+          <HistoryTab 
+            tenant={tenant} 
+            items={[
+              ...payments, 
+              ...expenses.map(e => ({ 
+                ...e, 
+                isExpense: true, 
+                method: 'Déduit sur la garantie', 
+                type: e.category, 
+                notes: e.description 
+              }))
+            ].sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime())} 
+          />
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 4: ESPACE SIGNALEMENT (MODERNISÉ AVEC PHOTOS & TIMELINE) */}
+        {/* ======================================================== */}
+        {activeTab === 'report' && (
+          <div className="space-y-6">
+            <form onSubmit={handleReportIssue} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+              <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <Wrench className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-gray-900">Signaler un Incident</h2>
+                  <p className="text-[11px] text-gray-500">Transmis directement au gestionnaire</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+                  Catégorie du problème
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'Eau', label: 'Eau', icon: Droplets },
+                    { id: 'Électricité', label: 'Électricité', icon: Zap },
+                    { id: 'Plomberie', label: 'Plomberie', icon: Wrench },
+                    { id: 'Fuite', label: 'Fuite', icon: Droplets },
+                    { id: 'Toiture', label: 'Toiture', icon: Building2 },
+                    { id: 'Autre', label: 'Autre', icon: Layers }
+                  ].map(cat => {
+                    const IconComp = cat.icon;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setIssueTitle(cat.id)}
+                        className={`p-3 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                          issueTitle === cat.id 
+                            ? 'border-indigo-600 bg-indigo-50/80 text-indigo-700 font-bold' 
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50 text-xs'
+                        }`}
+                      >
+                        <IconComp className="w-4 h-4" />
+                        <span className="text-[11px]">{cat.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Urgence
+                </label>
+                <div className="flex gap-2">
+                  {['Normale', 'Urgente'].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setIssuePriority(p)}
+                      className={`flex-1 py-2 text-xs font-bold rounded-xl border transition-all ${
+                        issuePriority === p 
+                          ? (p === 'Urgente' ? 'bg-rose-50 text-rose-700 border-rose-300' : 'bg-indigo-50 text-indigo-700 border-indigo-300')
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Description précise
+                </label>
+                <textarea 
+                  required 
+                  rows={3} 
+                  value={issueDesc} 
+                  onChange={e => setIssueDesc(e.target.value)} 
+                  placeholder="Décrivez l'anomalie constatée (ex: fuite sous l'évier, coupure de courant...)" 
+                  className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xs sm:text-sm resize-none focus:border-indigo-500" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                  Photo illustrative (optionnelle)
+                </label>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const img = new Image();
+                        img.onload = () => {
+                          const canvas = document.createElement('canvas');
+                          let width = img.width;
+                          let height = img.height;
+                          const MAX_SIZE = 800;
+                          if (width > height && width > MAX_SIZE) {
+                            height = Math.round((height * MAX_SIZE) / width);
+                            width = MAX_SIZE;
+                          } else if (height > MAX_SIZE) {
+                            width = Math.round((width * MAX_SIZE) / height);
+                            height = MAX_SIZE;
+                          }
+                          canvas.width = width;
+                          canvas.height = height;
+                          const ctx = canvas.getContext('2d');
+                          ctx?.drawImage(img, 0, 0, width, height);
+                          setIssuePhotoUrl(canvas.toDataURL('image/jpeg', 0.65));
+                        };
+                        img.src = ev.target?.result as string;
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }} 
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-500" 
+                />
+
+                {issuePhotoUrl && (
+                  <div className="relative mt-2 rounded-xl overflow-hidden border border-gray-200">
+                    <img src={issuePhotoUrl} alt="Aperçu" className="w-full h-36 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setIssuePhotoUrl('')}
+                      className="absolute top-2 right-2 bg-red-600 text-white p-1 rounded-full hover:bg-red-700"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button 
+                disabled={submittingIssue || !issueDesc.trim()} 
+                type="submit" 
+                className="w-full py-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50 cursor-pointer shadow-md"
+              >
+                {submittingIssue ? 'Transmission en cours...' : 'Envoyer le signalement au bailleur'}
+              </button>
+            </form>
+
+            {/* List of past incidents and feedback */}
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+              <h3 className="font-bold text-sm text-gray-900">Historique de vos signalements ({maintenances.length})</h3>
+
+              <div className="space-y-3">
+                {maintenances.map((m: any) => (
+                  <div key={m.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 text-xs sm:text-sm space-y-2.5">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <span className="font-bold text-gray-900 block">{m.title}</span>
+                        <span className="text-[11px] text-gray-500">
+                          {new Date(m.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          m.status === 'Résolu' ? 'bg-emerald-100 text-emerald-800' :
+                          m.status === 'En cours' ? 'bg-blue-100 text-blue-800' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          {m.status}
+                        </span>
+                        <button 
+                          type="button" 
+                          onClick={async () => {
+                            if (window.confirm('Voulez-vous supprimer ce signalement ?')) {
+                              try {
+                                await deleteDoc(doc(db, 'maintenance', m.id));
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }
+                          }} 
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{m.description}</p>
+
                     {m.photoUrl && (
-                      <div className="block mt-2 cursor-pointer" onClick={() => setShowPhoto(m.photoUrl)}>
-                        <img src={m.photoUrl} alt="Problème" className="w-full h-40 object-cover rounded-xl border border-gray-200" referrerPolicy="no-referrer" />
+                      <div className="cursor-pointer" onClick={() => setShowPhoto(m.photoUrl)}>
+                        <img src={m.photoUrl} alt="Photo problème" className="w-full h-36 object-cover rounded-xl border border-gray-200 hover:opacity-95" />
                       </div>
                     )}
-                    
+
+                    {/* Landlord feedback & work costs */}
                     {(m.notes || m.cost !== undefined || m.duration) && (
-                      <div className="mt-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col gap-2">
-                        <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-xs space-y-1.5">
+                        <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1">
                           <MessageSquare className="w-3 h-3" />
-                          Réponse du propriétaire
+                          Réponse du bailleur
                         </p>
-                        {m.notes && <p className="text-sm text-gray-700 whitespace-pre-wrap">{m.notes}</p>}
+                        {m.notes && <p className="text-xs text-gray-800">{m.notes}</p>}
                         {(m.cost !== undefined || m.duration) && (
-                           <div className="flex flex-wrap gap-2 mt-2">
-                             {m.cost !== undefined && <span className="text-xs font-medium bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100">Coût approx: {m.cost} $</span>}
-                             {m.duration && <span className="text-xs font-medium bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100">Durée estimée: {m.duration}</span>}
-                           </div>
+                          <div className="flex flex-wrap gap-2 pt-1 text-[11px]">
+                            {m.cost !== undefined && <span className="bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-100">Coût déduit: {m.cost} $</span>}
+                            {m.duration && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">Délai estimé: {m.duration}</span>}
+                          </div>
                         )}
                       </div>
                     )}
-                    
-                    {/* Tenant Status Action UI */}
+
+                    {/* Tenant Status Actions */}
                     {m.status !== 'Résolu' && (
-                      <div className="mt-4 pt-3 border-t border-gray-100">
+                      <div className="pt-2 border-t border-gray-200">
                         {respondingIssueId === m.id ? (
-                          <div className="space-y-3">
-                            <p className="text-sm font-medium text-gray-900">
-                              Marquer comme : {tenantResponseTargetStatus}
-                            </p>
+                          <div className="space-y-2">
+                            <p className="text-xs font-bold text-gray-800">Votre retour : {tenantResponseTargetStatus}</p>
                             <textarea
-                              className="w-full p-2 border border-gray-200 rounded-lg outline-none text-sm resize-none focus:border-indigo-500"
-                              rows={3}
-                              placeholder="Expliquez pourquoi..."
+                              rows={2}
+                              placeholder="Expliquez la situation..."
                               value={tenantResponseText}
                               onChange={e => setTenantResponseText(e.target.value)}
+                              className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none"
                             />
                             <div className="flex gap-2">
                               <button
                                 type="button"
-                                className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
                                 onClick={() => {
                                   setRespondingIssueId(null);
                                   setTenantResponseTargetStatus('');
                                   setTenantResponseText('');
                                 }}
+                                className="flex-1 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg"
                               >
                                 Annuler
                               </button>
                               <button
                                 type="button"
-                                className="flex-1 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
                                 onClick={() => handleTenantActionOnMaintenance(m, tenantResponseTargetStatus, tenantResponseText)}
-                                disabled={!tenantResponseText.trim() || loading}
+                                className="flex-1 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg"
                               >
-                                Confirmer
+                                Envoyer
                               </button>
                             </div>
                           </div>
                         ) : (
-                          <div className="flex flex-col gap-2">
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mettre à jour le statut</p>
-                            <div className="flex gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => handleTenantActionOnMaintenance(m, 'Résolu')}
-                                className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 font-medium text-xs rounded-lg transition-colors"
-                              >
-                                Résolu
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRespondingIssueId(m.id);
-                                  setTenantResponseTargetStatus('Non résolu');
-                                }}
-                                className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-medium text-xs rounded-lg transition-colors"
-                              >
-                                Non résolu
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRespondingIssueId(m.id);
-                                  setTenantResponseTargetStatus('Résolu mais pas bien fait');
-                                }}
-                                className="px-3 py-1.5 bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100 font-medium text-xs rounded-lg transition-colors"
-                              >
-                                Mal fait
-                              </button>
-                            </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Mettre à jour :</span>
+                            <button
+                              type="button"
+                              onClick={() => handleTenantActionOnMaintenance(m, 'Résolu')}
+                              className="px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-bold"
+                            >
+                              ✓ Résolu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRespondingIssueId(m.id);
+                                setTenantResponseTargetStatus('Non résolu');
+                              }}
+                              className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-bold"
+                            >
+                              Non résolu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRespondingIssueId(m.id);
+                                setTenantResponseTargetStatus('Mal fait');
+                              }}
+                              className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 rounded-lg text-xs font-bold"
+                            >
+                              Mal fait
+                            </button>
                           </div>
                         )}
                       </div>
                     )}
-                    
-                    {m.tenantResponse && (
-                       <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Votre réponse ({m.status})</p>
-                         <p className="text-sm text-gray-700 mt-1">{m.tenantResponse}</p>
-                       </div>
-                    )}
-                 </div>
-               ))}
-               {maintenances.length === 0 && <p className="text-xs text-gray-400">Aucun signalement.</p>}
+                  </div>
+                ))}
+
+                {maintenances.length === 0 && (
+                  <p className="text-center text-gray-400 text-xs py-4">
+                    Aucun incident signalé pour ce logement.
+                  </p>
+                )}
               </div>
             </div>
-          </form>
+          </div>
         )}
 
-        {activeTab === 'contract' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Détails du contrat</h2>
-            {contract ? (
-              <div className="space-y-4">
-                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Status</p>
-                      <span className={`px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-lg`}>{contract.status}</span>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Loyer Mensuel</p>
-                      <p className="font-bold text-gray-900">{contract.rentAmount} $</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Date de début</p>
-                      <p className="font-medium text-gray-900">{contract.startDate ? new Date(contract.startDate).toLocaleDateString() : 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Date de fin</p>
-                      <p className="font-medium text-gray-900">{contract.endDate ? new Date(contract.endDate).toLocaleDateString() : 'Indéterminée'}</p>
-                    </div>
-                    <div className="col-span-2">
-                       <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Garantie payée</p>
-                       <p className="font-medium text-gray-900">{contract.depositAmount} $</p>
-                    </div>
-                  </div>
+        {/* ======================================================== */}
+        {/* TAB 5: ESPACE COMPTE (MODERNISÉ AVEC SÉCURITÉ & SUPPRESSION) */}
+        {/* ======================================================== */}
+        {activeTab === 'account' && (
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-6">
+            <div className="flex items-center gap-3 border-b border-gray-100 pb-4">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                <User className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Mon Compte Locataire</h2>
+                <p className="text-xs text-gray-500">Coordonnées, bail et préférences</p>
+              </div>
+            </div>
+
+            {/* Lease & Property Details */}
+            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-indigo-600" />
+                Détails du Logement & Bail
+              </h3>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="text-gray-500">Adresse</p>
+                  <p className="font-bold text-gray-900">{tenant.address || 'N/A'}</p>
                 </div>
-                {contract.clauses && (
-                  <div className="border border-gray-100 rounded-2xl p-4">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Clauses & Notes</p>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{contract.clauses}</p>
-                  </div>
+                <div>
+                  <p className="text-gray-500 flex items-center gap-1"><Calendar className="w-3 h-3 text-gray-400" /> Date d'entrée</p>
+                  <p className="font-bold text-gray-900">{new Date(tenant.entryDate || dToday).toLocaleDateString('fr-FR')}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Loyer mensuel</p>
+                  <p className="font-bold text-indigo-700">{tenant.monthlyRent} $</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Garantie locative</p>
+                  <p className="font-bold text-emerald-700">{tenant.guaranteeAmount || 0} $</p>
+                </div>
+              </div>
+
+              {contract && (
+                <div className="pt-2 border-t border-gray-200 mt-2 text-xs text-gray-600 space-y-1">
+                  <p><strong>Contrat :</strong> {contract.status || 'Actif'} • Du {new Date(contract.startDate || tenant.entryDate).toLocaleDateString('fr-FR')}</p>
+                  {contract.attachmentUrl && (
+                    <a href={contract.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-indigo-600 font-bold hover:underline">
+                      <Download className="w-3.5 h-3.5" /> Télécharger mon contrat de bail
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Landlord Contact Info */}
+            <div className="p-4 bg-indigo-50/60 rounded-2xl border border-indigo-100 space-y-2 text-xs">
+              <h3 className="font-bold text-indigo-950 uppercase tracking-wider text-[10px]">Contacts Gestionnaire / Bailleur</h3>
+              <div className="flex flex-wrap gap-3 pt-1">
+                {adminPaymentConfig?.mobileMoneyPhone && (
+                  <a href={`tel:${adminPaymentConfig.mobileMoneyPhone}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-indigo-700 rounded-lg font-bold border border-indigo-200 hover:bg-indigo-50">
+                    <Phone className="w-3.5 h-3.5" /> Appeler
+                  </a>
                 )}
-                {contract.attachmentUrl && (
-                  <a href={contract.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-2 w-full mt-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium py-3 rounded-xl transition-colors">
-                    Télécharger le contrat original
+                {tenant.email && (
+                  <a href={`mailto:${tenant.email}`} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 rounded-lg font-medium border border-gray-200 hover:bg-gray-50">
+                    <Mail className="w-3.5 h-3.5" /> Email
                   </a>
                 )}
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500">Aucun contrat électronique associé.</p>
+            </div>
+
+            {/* Saved Payment Coordinates */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-indigo-600" />
+                Coordonnées de Règlement Préférées
+              </h3>
+              
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Fournisseur</label>
+                <select 
+                  value={paymentProvider} 
+                  onChange={e => setPaymentProvider(e.target.value)} 
+                  className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xs sm:text-sm font-semibold"
+                >
+                  <option value="M-Pesa">M-Pesa (Vodacom)</option>
+                  <option value="Orange Money">Orange Money</option>
+                  <option value="Airtel Money">Airtel Money</option>
+                  <option value="Carte Visa">Carte Bancaire Visa</option>
+                </select>
               </div>
-            )}
-          </div>
-        )}
 
-        {activeTab === 'account' && (
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Compte Sécurisé</h2>
-            <p className="text-sm text-gray-500 mb-4">Enregistrez vos informations de paiement pour vos futurs transferts.</p>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fournisseur / Banque</label>
-              <select 
-                value={paymentProvider} 
-                onChange={e => setPaymentProvider(e.target.value)} 
-                className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none text-gray-900" 
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Numéro de Téléphone ou Numéro Visa</label>
+                <input 
+                  type="text" 
+                  value={accountNumber} 
+                  onChange={e => setAccountNumber(e.target.value)} 
+                  placeholder="Ex: 0812345678" 
+                  className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none text-xs sm:text-sm font-semibold"
+                />
+              </div>
+
+              <button 
+                onClick={() => {
+                  try {
+                    localStorage.setItem('tenant_paymentProvider', paymentProvider);
+                    localStorage.setItem('tenant_accountNumber', accountNumber);
+                    setSavedAccountSuccess(true);
+                    setTimeout(() => setSavedAccountSuccess(false), 3000);
+                  } catch (_e) {
+                    void _e;
+                  }
+                }} 
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-colors cursor-pointer"
               >
-                <option value="M-Pesa">M-Pesa</option>
-                <option value="Orange Money">Orange Money</option>
-                <option value="Airtel Money">Airtel Money</option>
-                <option value="Equity Bank">Equity Bank</option>
-                <option value="Rawbank">Rawbank</option>
-                <option value="Afriland">Afriland First Bank</option>
-                <option value="Autre">Autre</option>
-              </select>
+                Mémoriser pour mes futurs paiements
+              </button>
+              {savedAccountSuccess && (
+                <p className="text-xs text-emerald-600 font-bold text-center">Coordonnées sauvegardées avec succès !</p>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Numéro de Téléphone / Compte</label>
-              <input 
-                type="text" 
-                value={accountNumber} 
-                onChange={e => setAccountNumber(e.target.value)} 
-                placeholder="Ex: 0812345678" 
-                className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none text-gray-900" 
-              />
+
+            {/* Security Guarantee */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3">
+              <ShieldCheck className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-700 space-y-1">
+                <p className="font-bold text-slate-900">Espace Sécurisé & Intégrité des Données</p>
+                <p>
+                  Vos déclarations et quittances sont archivées de manière immuable. 
+                  Votre bailleur ne peut pas modifier vos reçus sans votre validation.
+                </p>
+              </div>
             </div>
-            
-            <button onClick={handleSaveAccount} disabled={loading} className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-colors">
-              Sauvegarder mes infos
-            </button>
-            {savedAccount && <p className="text-green-600 text-center font-medium mt-2">Informations enregistrées !</p>}
-            
-            <div className="pt-6 mt-6 border-t border-gray-100">
-               <h3 className="font-bold text-gray-900 mb-3">Se déconnecter de l'Espace Locataire</h3>
-               <button 
-                 onClick={() => auth.signOut()} 
-                 className="w-full py-4 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-bold transition-colors"
-               >
-                 Se Déconnecter
-               </button>
+
+            {/* Logout and Delete Account Actions */}
+            <div className="pt-4 border-t border-gray-100 space-y-3">
+              <button 
+                onClick={async () => {
+                  if (auth.currentUser) await auth.signOut();
+                  navigate('/');
+                }} 
+                className="w-full py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Se Déconnecter de l'Espace Locataire
+              </button>
+
+              <button 
+                onClick={() => setShowDeleteAccountModal(true)} 
+                className="w-full py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Supprimer Définitivement mon Compte Locataire
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Delete Tenant Account Confirmation */}
+        {showDeleteAccountModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-center">
+              <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-black text-gray-900">Supprimer votre compte ?</h3>
+              <p className="text-xs text-gray-600 leading-relaxed text-justify">
+                Cette action supprimera définitivement votre compte locataire et vos accès. 
+                Si vous n'êtes plus lié à ce bailleur, confirmez la suppression.
+              </p>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteAccountModal(false)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold text-xs rounded-xl"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteTenantAccount}
+                  className="flex-1 py-3 bg-rose-600 text-white font-bold text-xs rounded-xl hover:bg-rose-700"
+                >
+                  Supprimer
+                </button>
+              </div>
             </div>
           </div>
         )}
 
       </div>
 
-      <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around p-3 pb-6 z-50 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
-        <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'dashboard' ? 'text-indigo-600 font-bold' : 'text-gray-400'}`}>
-          <Building2 className="w-6 h-6" />
-          <span className="text-[10px] uppercase tracking-wider">Accueil</span>
+      {/* Modern Bottom Navigation Bar */}
+      <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around p-2 pb-5 z-40 shadow-[0_-4px_25px_-5px_rgba(0,0,0,0.08)]">
+        <button 
+          onClick={() => setActiveTab('dashboard')} 
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            activeTab === 'dashboard' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Building2 className="w-5 h-5" />
+          <span className="text-[10px] uppercase font-bold tracking-wider">Accueil</span>
         </button>
-        <button onClick={() => { if(tenant) { setPaymentType('Loyer'); setPaymentAmount(tenant.monthlyRent); } setActiveTab('pay'); setPaymentStep(1); }} className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'pay' ? 'text-indigo-600 font-bold' : 'text-gray-400'}`}>
-          <CreditCard className="w-6 h-6" />
-          <span className="text-[10px] uppercase tracking-wider">Payer</span>
+
+        <button 
+          onClick={() => { 
+            if (tenant) { 
+              setPaymentType('Loyer'); 
+              setPaymentAmount(tenant.monthlyRent); 
+            } 
+            setActiveTab('pay'); 
+            setPaymentStep(1); 
+          }} 
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            activeTab === 'pay' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <CreditCard className="w-5 h-5" />
+          <span className="text-[10px] uppercase font-bold tracking-wider">Payer</span>
         </button>
-        <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'history' ? 'text-indigo-600 font-bold' : 'text-gray-400'}`}>
-          <History className="w-6 h-6" />
-          <span className="text-[10px] uppercase tracking-wider">Historique</span>
+
+        <button 
+          onClick={() => setActiveTab('history')} 
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            activeTab === 'history' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <History className="w-5 h-5" />
+          <span className="text-[10px] uppercase font-bold tracking-wider">Historique</span>
         </button>
-        <button onClick={() => setActiveTab('report')} className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'report' ? 'text-indigo-600 font-bold' : 'text-gray-400'}`}>
-          <MessageSquare className="w-6 h-6" />
-          <span className="text-[10px] uppercase tracking-wider">Signalements</span>
+
+        <button 
+          onClick={() => setActiveTab('report')} 
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            activeTab === 'report' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          <span className="text-[10px] uppercase font-bold tracking-wider">Signalements</span>
         </button>
-        <button onClick={() => setActiveTab('account')} className={`flex flex-col items-center gap-1 p-2 ${activeTab === 'account' ? 'text-indigo-600 font-bold' : 'text-gray-400'}`}>
-          <User className="w-6 h-6" />
-          <span className="text-[10px] uppercase tracking-wider">Compte</span>
+
+        <button 
+          onClick={() => setActiveTab('account')} 
+          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
+            activeTab === 'account' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <User className="w-5 h-5" />
+          <span className="text-[10px] uppercase font-bold tracking-wider">Compte</span>
         </button>
       </div>
+
       {showPhoto && <PhotoModal url={showPhoto} onClose={() => setShowPhoto(null)} />}
     </div>
   );

@@ -11,9 +11,13 @@ import { Toaster, toast } from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { Logo } from './Logo';
 import { APP_VERSION } from '../version';
+import { Sparkles, ArrowUpRight } from 'lucide-react';
+import { useSubscription } from '../context/SubscriptionContext';
+import { SubscriptionModal } from './SubscriptionModal';
 
 export function Layout() {
   const { t, i18n } = useTranslation();
+  const { subscription, openSubscriptionModal } = useSubscription();
   const [issues, setIssues] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -189,6 +193,34 @@ export function Layout() {
             </NavLink>
           ))}
         </nav>
+        
+        {/* Subscription Sidebar Widget */}
+        <div className="p-3.5 mx-3 my-2 bg-gradient-to-br from-blue-900 to-indigo-950 text-white rounded-2xl border border-blue-800 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 fill-amber-300" />
+              {subscription.tierId}
+            </span>
+            <span className="text-[11px] font-extrabold text-blue-100">
+              {subscription.monthlyAmount} {subscription.currency === 'USD' ? '$' : 'FC'}/m
+            </span>
+          </div>
+          <p className="text-[11px] text-blue-200/90 mb-2">
+            {subscription.isExpired
+              ? "Abonnement échu."
+              : subscription.isTrial
+              ? `Essai : ${subscription.daysRemaining} j restants`
+              : `${subscription.daysRemaining} j restants`}
+          </p>
+          <button
+            onClick={() => openSubscriptionModal('pro')}
+            className="w-full py-1.5 px-2.5 bg-white hover:bg-blue-50 text-blue-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1 cursor-pointer"
+          >
+            <span>{subscription.isExpired ? "Renouveler" : "Changer / Forfaits"}</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setShowLogoutConfirm(true)}
@@ -208,13 +240,21 @@ export function Layout() {
       {/* Main Content */}
       <main className="flex-1 pb-24 md:pb-0 flex flex-col min-h-screen">
         <InstallPrompt />
-        {/* Mobile Header with Notifications */}
+        {/* Mobile Header with Notifications & Subscription */}
         <div className="md:hidden sticky top-0 left-0 right-0 z-40 bg-blue-900 dark:bg-blue-950 shadow-md flex justify-between items-center p-4">
           <div className="flex items-center gap-2">
             <Logo className="w-8 h-8" />
             <h1 className="text-2xl font-bold text-white">ImmoGest</h1>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => openSubscriptionModal('pro')}
+              className="px-2.5 py-1 rounded-xl bg-amber-400 text-gray-950 text-[11px] font-extrabold flex items-center gap-1 shadow-xs cursor-pointer"
+              title="Abonnement Mensuel"
+            >
+              <Sparkles className="w-3 h-3 fill-gray-950" />
+              <span className="uppercase">{subscription.tierId}</span>
+            </button>
             <button 
               onClick={() => i18n.changeLanguage(i18n.language === 'fr' ? 'en' : 'fr')}
               className="p-2 rounded-full bg-blue-800 hover:bg-blue-700 border border-blue-700 text-white relative transition-colors"
@@ -272,6 +312,19 @@ export function Layout() {
           </div>
         </div>
 
+        {/* Expired / Trial warning banner */}
+        {subscription.isExpired && (
+          <div className="bg-gradient-to-r from-red-600 to-rose-700 text-white px-4 py-2.5 flex items-center justify-between text-xs font-semibold shadow-md">
+            <span>Votre abonnement mensuel est arrivé à échéance. Veuillez le renouveler pour réactiver tous les accès.</span>
+            <button
+              onClick={() => openSubscriptionModal('pro')}
+              className="ml-3 px-3 py-1 bg-white text-red-700 font-extrabold rounded-lg shadow-xs hover:bg-red-50 cursor-pointer"
+            >
+              Renouveler
+            </button>
+          </div>
+        )}
+
         <div className="max-w-5xl mx-auto p-4 md:p-8 w-full flex-grow">
           <Outlet />
         </div>
@@ -323,6 +376,7 @@ export function Layout() {
       )}
 
       {showProfileModal && <ProfileModal onClose={() => setShowProfileModal(false)} />}
+      <SubscriptionModal />
       <Toaster position="top-right" />
     </div>
   );

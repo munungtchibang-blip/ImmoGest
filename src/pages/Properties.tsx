@@ -2,16 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Building2, Plus, ArrowLeft, Trash2, Home } from 'lucide-react';
+import { Building2, Plus, ArrowLeft, Trash2, Home, Sparkles, Lock, MapPin, Users, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
-
 import { useTranslation } from 'react-i18next';
+import { useSubscription } from '../context/SubscriptionContext';
 
 export function Properties() {
   const { t } = useTranslation();
+  const { subscription, openSubscriptionModal } = useSubscription();
   const [properties, setProperties] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -101,27 +102,34 @@ export function Properties() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">{t('Biens Immobiliers')}</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">{t('Gérez vos maisons, appartements et parcelles.')}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-0.5 transition-colors">{t('Gérez vos maisons, appartements et parcelles.')}</p>
         </div>
         <button
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors"
+          onClick={() => {
+            if (properties.length >= 1 && subscription.tierId === 'starter') {
+              toast.error("Votre abonnement Débutant permet 1 bien maximum. Passez au forfait Pro pour gérer un nombre illimité de biens.");
+              openSubscriptionModal('pro');
+              return;
+            }
+            setShowAddForm(true);
+          }}
+          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs self-start sm:self-auto"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-4 h-4" />
           {t('Nouveau Bien')}
         </button>
       </div>
 
       {loading ? (
-        <div className="animate-pulse space-y-4">
-          {[1,2,3].map(i => <div key={i} className="h-32 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>)}
+        <div className="animate-pulse space-y-3">
+          {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-2.5">
           {properties.length === 0 ? (
-            <div className="col-span-full p-12 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-              <Building2 className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-500 dark:text-gray-400">{t('Aucun bien immobilier enregistré.')}</p>
+            <div className="p-8 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+              <Building2 className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('Aucun bien immobilier enregistré.')}</p>
             </div>
           ) : (
             properties.map(property => {
@@ -140,76 +148,78 @@ export function Properties() {
                 const occupiedUnits = propTenants.length;
                 const freeUnits = totalUnits - occupiedUnits;
                 if (freeUnits > 0) {
-                  unoccupiedText = `${freeUnits} unité(s) libre(s)`;
+                  unoccupiedText = `${freeUnits} libre(s)`;
                 } else {
                   unoccupiedText = "Complet";
                 }
               }
 
               return (
-                <div key={property.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6 flex flex-col transition-colors">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center gap-3">
-                      {property.photoUrl ? (
-                         <img src={property.photoUrl} alt={property.name} className="w-12 h-12 rounded-lg object-cover cursor-pointer" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowPhoto(property.photoUrl); }} referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                          <Home className="w-5 h-5" />
-                        </div>
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-gray-900 dark:text-white">{property.name}</h3>
-                          {property.status && (
-                            <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full ${
-                              property.status === 'Libre' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' :
-                              property.status === 'Occupé' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' :
-                              'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
-                            }`}>
-                              {property.status}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {property.type}
-                          {(property.type === 'Appartement' || property.type === 'Immeuble') ? ` • ${property.apartmentsCount || property.levels || 1} unité(s)` : ''}
-                        </p>
+                <div key={property.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-blue-300 dark:hover:border-blue-600 transition-all">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    {property.photoUrl ? (
+                      <img src={property.photoUrl} alt={property.name} className="w-11 h-11 rounded-xl object-cover cursor-pointer shrink-0 border border-gray-200 dark:border-gray-700" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowPhoto(property.photoUrl); }} referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-11 h-11 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                        <Home className="w-5 h-5" />
                       </div>
-                    </div>
-                    <button 
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPropertyToDelete(property.id); }}
-                      className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                      title="Supprimer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-6 flex-1">{property.address}</p>
-
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl flex flex-col justify-between">
-                      <div className="flex justify-between items-start mb-1 gap-1">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Locataires</p>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-bold text-sm text-gray-900 dark:text-white truncate">{property.name}</h3>
+                        <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          {property.type}
+                          {(property.type === 'Appartement' || property.type === 'Immeuble') ? ` (${property.apartmentsCount || property.levels || 1} unités)` : ''}
+                        </span>
+                        {property.status && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            property.status === 'Libre' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                            property.status === 'Occupé' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' :
+                            'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                          }`}>
+                            {property.status}
+                          </span>
+                        )}
                         {unoccupiedText && (
-                          <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full text-right leading-tight ${unoccupiedText === 'Complet' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'}`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${unoccupiedText === 'Complet' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                             {unoccupiedText}
                           </span>
                         )}
                       </div>
-                      <p className="font-bold text-gray-900 dark:text-white">{propTenants.length}</p>
-                    </div>
-                    <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl flex flex-col justify-between">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{t('Bénéfice Net')}</p>
-                      <p className={`font-bold ${netIncome >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                        {netIncome.toLocaleString()} $
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                        {property.address}
                       </p>
                     </div>
                   </div>
-                  
-                  <Link to={`/properties/${property.id}`} className="w-full py-2 text-center text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-colors">
-                    {t('Voir les détails')}
-                  </Link>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-750">
+                    <div className="flex items-center gap-3 text-right">
+                      <div>
+                        <p className="text-[10px] text-gray-400">Locataires</p>
+                        <p className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white">{propTenants.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-400">{t('Bénéfice Net')}</p>
+                        <p className={`font-bold text-xs sm:text-sm ${netIncome >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {netIncome.toLocaleString()} $
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 ml-2">
+                      <Link to={`/properties/${property.id}`} className="px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800/60 transition-colors">
+                        {t('Détails')}
+                      </Link>
+                      <button 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPropertyToDelete(property.id); }}
+                        className="text-gray-400 hover:text-red-500 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               );
             })

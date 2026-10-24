@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, getDocs, updateDoc, doc, getDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { CreditCard, Search, Download, ArrowLeft, Edit2, Trash2, FileSpreadsheet, X, Repeat } from 'lucide-react';
+import { CreditCard, Search, Download, ArrowLeft, Edit2, Trash2, FileSpreadsheet, X, Repeat, Sparkles, CheckCircle2 } from 'lucide-react';
 import { format, differenceInMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
+import { useSubscription } from '../context/SubscriptionContext';
 
 export function Payments() {
+  const { subscription, openSubscriptionModal } = useSubscription();
   const [payments, setPayments] = useState<any[]>([]);
   const [tenantsMap, setTenantsMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -19,6 +21,7 @@ export function Payments() {
   const [editingPayment, setEditingPayment] = useState<any>(null);
   const [viewingPayment, setViewingPayment] = useState<any>(null);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [showPostPayModal, setShowPostPayModal] = useState(false);
 
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'historique' | 'impayes'>('historique');
@@ -316,44 +319,44 @@ export function Payments() {
               Object.entries(groupedPayments).map(([tenantId, tenantPayments]) => {
                 const tenant = tenantsMap[tenantId];
                 return (
-                  <div key={tenantId} className="border-b border-gray-100 dark:border-gray-700 last:border-0 pb-4">
-                    <div className="bg-gray-50 dark:bg-gray-900/50 p-4 font-bold text-gray-800 dark:text-gray-200 sticky top-0 z-10 flex items-center justify-between">
+                  <div key={tenantId} className="border-b border-gray-100 dark:border-gray-700/80 last:border-0">
+                    <div className="bg-gray-50/80 dark:bg-gray-900/60 px-3.5 py-2 font-bold text-gray-800 dark:text-gray-200 sticky top-0 z-10 flex items-center justify-between text-xs">
                       <span>{tenant?.name || 'Locataire inconnu'}</span>
-                      <span className="text-sm font-normal text-gray-500">{tenantPayments.length} paiement{tenantPayments.length > 1 ? 's' : ''}</span>
+                      <span className="text-[11px] font-normal text-gray-400">{tenantPayments.length} paiement{tenantPayments.length > 1 ? 's' : ''}</span>
                     </div>
-                    <div>
+                    <div className="divide-y divide-gray-50 dark:divide-gray-800">
                       {tenantPayments.map(payment => (
-                        <div key={payment.id} onClick={() => setViewingPayment(payment)} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0 ml-4 cursor-pointer">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                              payment.type === 'Loyer' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400'
+                        <div key={payment.id} onClick={() => setViewingPayment(payment)} className="p-3 sm:px-4 sm:py-2.5 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors cursor-pointer">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs ${
+                              payment.type === 'Loyer' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400'
                             }`}>
-                              <CreditCard className="w-5 h-5" />
+                              <CreditCard className="w-4 h-4" />
                             </div>
-                            <div>
-                              <p className="font-semibold text-gray-900 dark:text-white">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-xs sm:text-sm text-gray-900 dark:text-white truncate">
                                 {payment.type} • {payment.method}
                               </p>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                              <p className="text-[11px] text-gray-400">
                                 {format(new Date(payment.date), 'dd MMM yyyy', { locale: fr })}
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-6 w-full sm:w-auto pl-14 sm:pl-0">
-                            <p className="font-bold text-gray-900 dark:text-white text-lg mr-2">{payment.amount} $</p>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <p className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">{payment.amount} $</p>
                             <button 
                               onClick={(e) => { e.stopPropagation(); setEditingPayment(payment); }}
-                              className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                               title="Modifier le paiement"
                             >
-                              <Edit2 className="w-5 h-5" />
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button 
                               onClick={(e) => { e.stopPropagation(); generateReceipt(payment); }}
-                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                               title="Télécharger le reçu"
                             >
-                              <Download className="w-5 h-5" />
+                              <Download className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </div>
@@ -369,10 +372,52 @@ export function Payments() {
         <UnpaidTab tenants={Object.values(tenantsMap)} payments={payments} />
       )}
       {showAddPayment && (
-        <AddPaymentModal tenants={Object.entries(tenantsMap).map(([id, t]) => ({ id, ...(t as any) }))} onClose={() => setShowAddPayment(false)} />
+        <AddPaymentModal
+          tenants={Object.entries(tenantsMap).map(([id, t]) => ({ id, ...(t as any) }))}
+          onClose={() => setShowAddPayment(false)}
+          onSuccess={() => {
+            setShowAddPayment(false);
+            if (subscription.tierId !== 'pro' && subscription.tierId !== 'vip') {
+              setShowPostPayModal(true);
+            }
+          }}
+        />
       )}
       {editingPayment && (
         <EditPaymentModal payment={editingPayment} onClose={() => setEditingPayment(null)} />
+      )}
+      {showPostPayModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <h3 className="font-bold text-gray-900 dark:text-white text-base">
+              Paiement Enregistré !
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
+              La quittance a été générée. Passez à l'abonnement <strong>Professionnel</strong> pour l'envoi instantané de quittance sur WhatsApp, l'export comptable complet et la gestion multi-biens.
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setShowPostPayModal(false);
+                  openSubscriptionModal('pro');
+                }}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold shadow-md transition-all"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Passer au Forfait Pro Recommandé</span>
+              </button>
+              <button
+                onClick={() => setShowPostPayModal(false)}
+                className="w-full py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Continuer sans changer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {viewingPayment && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -498,33 +543,30 @@ function UnpaidTab({ tenants, payments }: { tenants: any[], payments: any[] }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
-      <div className="divide-y divide-gray-100 dark:divide-gray-700">
+      <div className="divide-y divide-gray-100 dark:divide-gray-750">
         {arrears.map(tenant => (
-          <div key={tenant.id} className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 flex items-center justify-center shrink-0">
-                <span className="font-bold">{tenant.unpaidMonths}</span>
+          <div key={tenant.id} className="p-3 sm:px-4 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 flex items-center justify-center shrink-0 text-xs font-bold">
+                <span>{tenant.unpaidMonths}m</span>
               </div>
-              <div>
-                <p className="font-bold text-gray-900 dark:text-white">{tenant.name}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {tenant.address}
-                </p>
-                <p className="text-xs text-red-500 dark:text-red-400 mt-1 font-medium">
-                  En retard de {tenant.unpaidMonths} mois (depuis le {format(new Date(tenant.entryDate || tenant.createdAt), 'dd MMM yyyy', { locale: fr })})
+              <div className="min-w-0">
+                <p className="font-bold text-xs sm:text-sm text-gray-900 dark:text-white truncate">{tenant.name}</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                  {tenant.address} • <span className="text-red-500 font-semibold">{tenant.unpaidMonths} mois impayé(s)</span>
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pl-16 sm:pl-0">
-              <div className="text-right mr-4">
-                <p className="font-bold text-red-600 dark:text-red-400 text-lg">{tenant.balance.toLocaleString()} $</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Restant à payer</p>
+            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+              <div className="text-right">
+                <p className="font-bold text-red-600 dark:text-red-400 text-sm sm:text-base">{tenant.balance.toLocaleString()} $</p>
+                <p className="text-[10px] text-gray-400">Restant dû</p>
               </div>
               <a 
                 href={`https://wa.me/${tenant.phone?.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Bonjour ${tenant.name}, ceci est un rappel concernant votre solde de ${tenant.balance.toLocaleString()} $ (${tenant.unpaidMonths} mois impayés). Merci de régulariser la situation dans les plus brefs délais.`)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-800/40 p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
+                className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 p-1.5 px-3 rounded-lg flex items-center gap-1.5 text-xs font-semibold transition-colors"
                 title="Relancer sur WhatsApp"
               >
                 Relancer
@@ -537,7 +579,7 @@ function UnpaidTab({ tenants, payments }: { tenants: any[], payments: any[] }) {
   );
 }
 
-function AddPaymentModal({ tenants, onClose }: { tenants: any[], onClose: () => void }) {
+function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onClose: () => void, onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({
@@ -594,7 +636,11 @@ function AddPaymentModal({ tenants, onClose }: { tenants: any[], onClose: () => 
 
       const pRef = collection(db, 'payments');
       await addDoc(pRef, paymentData);
-      onClose();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        onClose();
+      }
     } catch (e: any) {
       console.error(e);
       setError("Erreur lors de l'enregistrement.");

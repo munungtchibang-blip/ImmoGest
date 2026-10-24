@@ -1,20 +1,41 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, deleteField } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { ArrowLeft, User, Phone, MapPin, Calendar, CreditCard, Download, Edit2, Trash2, AlertTriangle, RefreshCw, QrCode, ChevronRight } from 'lucide-react';
-import { formatDistanceToNow, format, intervalToDuration } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { 
+  ArrowLeft, 
+  User, 
+  Phone, 
+  MapPin, 
+  Calendar, 
+  CreditCard, 
+  Download, 
+  Edit2, 
+  Trash2, 
+  AlertTriangle, 
+  RefreshCw, 
+  ChevronRight, 
+  CheckCircle2, 
+  Image as ImageIcon, 
+  FileCheck
+} from 'lucide-react';
+import { format, intervalToDuration } from 'date-fns';
 import jsPDF from 'jspdf';
-import { QRCodeCanvas } from 'qrcode.react';
-import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 export function TenantDetail() {
   const { id } = useParams();
-  const [tenant, setTenant] = useState<any>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Instant render if passed from Tenants list
+  const initialTenant = location.state?.tenant;
+  const [tenant, setTenant] = useState<any>(initialTenant || null);
   const [payments, setPayments] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [proofs, setProofs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(!initialTenant);
+
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [showEditTenant, setShowEditTenant] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
@@ -23,41 +44,47 @@ export function TenantDetail() {
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const [showPortalLinkModal, setShowPortalLinkModal] = useState(false);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [selectedProofPhoto, setSelectedProofPhoto] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!id || !auth.currentUser) return;
 
-    const fetchTenant = async () => {
-      try {
-        const docRef = doc(db, 'tenants', id);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists() && docSnap.data().landlordId === auth.currentUser?.uid) {
-          setTenant({ id: docSnap.id, ...docSnap.data() });
-        }
-      } catch (error) {
-        console.error("Error fetching tenant:", error);
-      } finally {
-        setLoading(false);
+    // Realtime tenant doc listener with instant cache response
+    const unsubTenant = onSnapshot(doc(db, 'tenants', id), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().landlordId === auth.currentUser?.uid) {
+        setTenant({ id: docSnap.id, ...docSnap.data() });
       }
-    };
+      setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
+    });
 
-    fetchTenant();
-
+    // Payments listener
     const unsubPayments = onSnapshot(query(collection(db, 'payments'), where('tenantId', '==', id), where('landlordId', '==', auth.currentUser.uid)), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) }));
       setPayments(data);
     }, (error) => { handleFirestoreError(error, OperationType.LIST, 'payments'); });
 
+    // Expenses listener
     const unsubExpenses = onSnapshot(query(collection(db, 'expenses'), where('tenantId', '==', id), where('landlordId', '==', auth.currentUser.uid)), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any), isExpense: true }));
       setExpenses(data);
     }, (error) => { handleFirestoreError(error, OperationType.LIST, 'expenses'); });
 
+    // Payment proofs listener (captured by tenant)
+    const unsubProofs = onSnapshot(query(collection(db, 'paymentProofs'), where('tenantId', '==', id)), (snapshot) => {
+      const pData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      pData.sort((a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+      setProofs(pData);
+    });
+
     return () => {
+      unsubTenant();
       unsubPayments();
       unsubExpenses();
+      unsubProofs();
     };
   }, [id]);
 
@@ -154,15 +181,80 @@ export function TenantDetail() {
       const expSnap = await getDocs(qExpenses);
       await Promise.all(expSnap.docs.map(d => deleteDoc(doc(db, 'expenses', d.id))));
 
+      const qProofs = query(collection(db, 'paymentProofs'), where('tenantId', '==', id));
+      const proofSnap = await getDocs(qProofs);
+      await Promise.all(proofSnap.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
+
       const qUsers = query(collection(db, 'users'), where('tenantId', '==', id));
       const usersSnap = await getDocs(qUsers);
       await Promise.all(usersSnap.docs.map(d => deleteDoc(doc(db, 'users', d.id))));
 
       await deleteDoc(doc(db, 'tenants', id!));
+      toast.success("Locataire, compte et données supprimés avec succès.");
       navigate('/tenants');
     } catch (error) {
       console.error("Error deleting tenant cascade", error);
-      // alert("Erreur lors de la suppression.");
+      toast.error("Erreur lors de la suppression.");
+    }
+  };
+
+  const handleConfirmProof = async (proof: any) => {
+    if (!tenant) return;
+    try {
+      const currentMonthKey = proof.monthKey || `${new Date(proof.date).getFullYear()}-${new Date(proof.date).getMonth() + 1}-${proof.type}`;
+      
+      // Check duplicate payment
+      const existingPayment = payments.find(p => 
+        p.monthKey === currentMonthKey || 
+        (p.type === proof.type && new Date(p.date).getMonth() === new Date(proof.date).getMonth() && new Date(p.date).getFullYear() === new Date(proof.date).getFullYear())
+      );
+
+      if (existingPayment) {
+        const proceed = window.confirm(`Attention : Un paiement de ${existingPayment.amount} $ est déjà enregistré pour ce mois (${proof.type}). Voulez-vous tout de même enregistrer ce paiement en double ?`);
+        if (!proceed) return;
+      }
+
+      const now = new Date().toISOString();
+      const paymentData = {
+        amount: Number(proof.amount),
+        date: proof.date || now,
+        method: proof.method || 'Capture / Mobile Money',
+        type: proof.type || 'Loyer',
+        notes: `Validé d'après capture de preuve du locataire. ${proof.notes || ''}`.trim(),
+        proofUrl: proof.proofUrl || '',
+        status: 'Confirmé',
+        monthKey: currentMonthKey,
+        confirmedAt: now,
+        confirmedBy: auth.currentUser?.uid || 'bailleur',
+        tenantId: tenant.id,
+        landlordId: auth.currentUser?.uid || tenant.landlordId,
+        createdAt: now
+      };
+
+      await addDoc(collection(db, 'payments'), paymentData);
+      await updateDoc(doc(db, 'paymentProofs', proof.id), {
+        status: 'Confirmé',
+        confirmedAt: now,
+        confirmedBy: auth.currentUser?.uid || 'bailleur'
+      });
+
+      toast.success("Paiement validé avec succès ! Quittance enregistrée.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors de la validation de la preuve.");
+    }
+  };
+
+  const handleRejectProof = async (proofId: string) => {
+    try {
+      await updateDoc(doc(db, 'paymentProofs', proofId), {
+        status: 'Rejeté',
+        updatedAt: new Date().toISOString()
+      });
+      toast.success("Preuve rejetée.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors du rejet.");
     }
   };
 
@@ -197,12 +289,12 @@ export function TenantDetail() {
 
       await updateDoc(doc(db, 'tenants', tenant.id), {
         guaranteeAmount: newGuaranteeAmount,
-        guaranteeStatus: newGuaranteeAmount === 0 ? 'Non payée' : 'Partielle',
+        guaranteeStatus: newStatus,
         updatedAt: now
       });
 
       // Update local state to reflect changes immediately before snapshot catches up
-      setTenant({ ...tenant, guaranteeAmount: newGuaranteeAmount, guaranteeStatus: newGuaranteeAmount === 0 ? 'Non payée' : 'Partielle' });
+      setTenant({ ...tenant, guaranteeAmount: newGuaranteeAmount, guaranteeStatus: newStatus });
       setShowDeductPrompt(false);
 
     } catch (error) {
@@ -427,6 +519,109 @@ export function TenantDetail() {
         </div>
       </div>
 
+      {/* Section Preuves de Paiement Reçues (Captures envoyées par le locataire) */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xs border border-gray-100 dark:border-gray-700/80 overflow-hidden transition-colors">
+        <div className="p-4 sm:p-5 border-b border-gray-100 dark:border-gray-700/80 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+              <FileCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+                Preuves de Paiement Reçues (Captures)
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Justificatifs et captures d'écran transmis par le locataire
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">
+            {proofs.length} preuve{proofs.length > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div className="divide-y divide-gray-100 dark:divide-gray-750">
+          {proofs.length === 0 ? (
+            <div className="p-6 text-center text-xs text-gray-500 dark:text-gray-400">
+              Aucune capture ou preuve transmise par ce locataire pour l'instant.
+            </div>
+          ) : (
+            proofs.map(proof => (
+              <div key={proof.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
+                  {proof.proofUrl ? (
+                    <img 
+                      src={proof.proofUrl} 
+                      alt="Capture de preuve" 
+                      className="w-12 h-12 rounded-xl object-cover border border-gray-200 dark:border-gray-700 cursor-pointer shrink-0 hover:opacity-90"
+                      onClick={() => setSelectedProofPhoto(proof.proofUrl)}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-400 flex items-center justify-center shrink-0">
+                      <ImageIcon className="w-5 h-5" />
+                    </div>
+                  )}
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
+                        {proof.type || 'Loyer'} • {proof.method || 'Mobile Money'}
+                      </p>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        proof.status === 'Confirmé' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                        proof.status === 'Rejeté' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' :
+                        'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                      }`}>
+                        {proof.status || 'En attente'}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Montant : <span className="font-bold text-gray-900 dark:text-white">{proof.amount} $</span> • Reçu le {new Date(proof.date || proof.createdAt).toLocaleDateString('fr-FR')}
+                    </p>
+                    {proof.notes && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 italic mt-0.5">
+                        "{proof.notes}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700 justify-end">
+                  {proof.proofUrl && (
+                    <button
+                      onClick={() => setSelectedProofPhoto(proof.proofUrl)}
+                      className="px-2.5 py-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
+                    >
+                      Agrandir
+                    </button>
+                  )}
+
+                  {proof.status !== 'Confirmé' && (
+                    <button
+                      onClick={() => handleConfirmProof(proof)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Confirmer & Encaisser
+                    </button>
+                  )}
+
+                  {proof.status === 'En attente' && (
+                    <button
+                      onClick={() => handleRejectProof(proof.id)}
+                      className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-900/40 transition-colors"
+                    >
+                      Rejeter
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
         <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">Historique des paiements</h2>
@@ -542,6 +737,15 @@ export function TenantDetail() {
       {showPhotoModal && tenant.photoUrl && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[60]" onClick={() => setShowPhotoModal(false)}>
           <img src={tenant.photoUrl} alt={tenant.name} className="max-w-full max-h-[90vh] object-contain rounded-xl" />
+          <button className="absolute top-4 right-4 text-white hover:text-gray-300 w-10 h-10 flex items-center justify-center bg-black/50 rounded-full">
+            <span className="text-xl font-bold">×</span>
+          </button>
+        </div>
+      )}
+
+      {selectedProofPhoto && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedProofPhoto(null)}>
+          <img src={selectedProofPhoto} alt="Preuve de paiement" className="max-w-full max-h-[90vh] object-contain rounded-xl" />
           <button className="absolute top-4 right-4 text-white hover:text-gray-300 w-10 h-10 flex items-center justify-center bg-black/50 rounded-full">
             <span className="text-xl font-bold">×</span>
           </button>
@@ -896,6 +1100,11 @@ function EditTenantModal({ tenant, onClose }: { tenant: any, onClose: () => void
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Modifier le locataire</h2>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {error && (
+            <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-medium">
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <div>

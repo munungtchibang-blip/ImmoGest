@@ -28,7 +28,7 @@ export function Settings() {
   const [showBankModal, setShowBankModal] = useState(false);
 
   const [showPaymentConfigStatus, setShowPaymentConfigStatus] = useState('');
-  const [isInstallable, setIsInstallable] = useState(false);
+  const [isInstallable, setIsInstallable] = useState(() => typeof window !== 'undefined' && Boolean((window as any).deferredPrompt));
   
   const getCurrentFontSize = () => {
     if (document.documentElement.classList.contains('text-sm')) return 'small';
@@ -41,7 +41,6 @@ export function Settings() {
 
   useEffect(() => {
     const handleBeforeInstall = () => setIsInstallable(true);
-    if (window.deferredPrompt) setIsInstallable(true);
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, []);
