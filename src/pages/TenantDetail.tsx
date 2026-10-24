@@ -20,6 +20,7 @@ import {
   FileCheck
 } from 'lucide-react';
 import { format, intervalToDuration } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
 
