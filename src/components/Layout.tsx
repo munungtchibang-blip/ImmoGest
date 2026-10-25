@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio } from 'lucide-react';
 import { logout, db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
 import { cn } from '../lib/utils';
@@ -19,6 +19,8 @@ export function Layout() {
   const { t, i18n } = useTranslation();
   const { subscription, openSubscriptionModal } = useSubscription();
   const [issues, setIssues] = useState<any[]>([]);
+  const [radarCount, setRadarCount] = useState<number>(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -85,9 +87,22 @@ export function Layout() {
       handleFirestoreError(error, OperationType.LIST, 'payments');
     });
 
+    const qRadar = query(collection(db, 'radar_alerts'), where('landlordId', '==', auth.currentUser.uid), where('status', '==', 'active'));
+    const unsubRadar = onSnapshot(qRadar, (snap) => {
+      setRadarCount(snap.docs.length);
+    }, () => {});
+
+    const qNotifs = query(collection(db, 'notifications'), where('userId', '==', auth.currentUser.uid));
+    const unsubNotifs = onSnapshot(qNotifs, (snap) => {
+      const unread = snap.docs.filter(d => !d.data().isRead && !d.data().isArchived).length;
+      setUnreadNotifCount(unread);
+    }, () => {});
+
     return () => {
       unsub();
       unsubPayments();
+      unsubRadar();
+      unsubNotifs();
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
@@ -101,6 +116,8 @@ export function Layout() {
     { to: '/expenses', icon: Receipt, label: t('Expenses') },
     { to: '/maintenance', icon: Wrench, label: t('Maintenance') },
     { to: '/contracts', icon: FileSignature, label: t('Contracts', 'Contrats') },
+    { to: '/radar', icon: Radio, label: 'Radar', badge: radarCount, badgeColor: 'bg-cyan-500' },
+    { to: '/notifications', icon: Bell, label: 'Notifications', badge: unreadNotifCount, badgeColor: 'bg-amber-500' },
     { to: '/reports', icon: FileText, label: t('Reports') },
     { to: '/settings', icon: Settings, label: t('Settings') },
   ];
@@ -167,29 +184,46 @@ export function Layout() {
                       ))
                     )}
                   </div>
+                  <div className="p-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                    <NavLink
+                      to="/notifications"
+                      onClick={() => setShowNotifications(false)}
+                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                    >
+                      <Bell className="w-3.5 h-3.5" />
+                      <span>Centre de Notifications</span>
+                    </NavLink>
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
-        <nav className="flex-1 px-4 space-y-2">
-          {navItems.map((item) => (
+        <nav className="flex-1 px-4 space-y-1.5 overflow-y-auto hide-scrollbar max-h-[calc(100vh-280px)]">
+          {navItems.map((item: any) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors group',
+                  'flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group',
                   isActive
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-bold'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-100'
                 )
               }
             >
-              <motion.div whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.95 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
-                <item.icon className="w-5 h-5" />
-              </motion.div>
-              {item.label}
+              <div className="flex items-center gap-3">
+                <motion.div whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.95 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+                  <item.icon className="w-4 h-4" />
+                </motion.div>
+                <span>{item.label}</span>
+              </div>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black text-white ${item.badgeColor || 'bg-blue-600'}`}>
+                  {item.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -332,21 +366,28 @@ export function Layout() {
 
       {/* Bottom Navigation for Mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 flex overflow-x-auto p-2 pb-4 z-40 transition-colors duration-300 hide-scrollbar shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-        {navItems.map((item) => (
+        {navItems.map((item: any) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center p-2 rounded-lg min-w-[72px] transition-colors flex-shrink-0',
-                isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                'flex flex-col items-center p-2 rounded-lg min-w-[68px] transition-colors flex-shrink-0 relative',
+                isActive ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-gray-500 dark:text-gray-400'
               )
             }
           >
-            <motion.div whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.95 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
-              <item.icon className="w-6 h-6 mb-1" />
-            </motion.div>
-            <span className="text-[10px] font-medium">{item.label}</span>
+            <div className="relative">
+              <motion.div whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.95 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
+                <item.icon className="w-5 h-5 mb-0.5" />
+              </motion.div>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className={`absolute -top-1 -right-2 px-1.5 py-0.2 rounded-full text-[8px] font-black text-white ${item.badgeColor || 'bg-blue-600'}`}>
+                  {item.badge}
+                </span>
+              )}
+            </div>
+            <span className="text-[9px] font-semibold tracking-tight">{item.label}</span>
           </NavLink>
         ))}
       </nav>

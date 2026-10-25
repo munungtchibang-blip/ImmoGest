@@ -16,7 +16,8 @@ import {
   Building2, 
   ArrowUpRight, 
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Radio
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
@@ -51,6 +52,8 @@ export function Dashboard() {
   const [showMonthlyModal, setShowMonthlyModal] = useState(false);
   const [showUnoccupiedModal, setShowUnoccupiedModal] = useState(false);
   const [hiddenNotifications, setHiddenNotifications] = useState<string[]>([]);
+  const [radarAlertsCount, setRadarAlertsCount] = useState<number>(0);
+  const [criticalRadarCount, setCriticalRadarCount] = useState<number>(0);
 
   useEffect(() => {
     const handleStorageChange = () => {
@@ -144,12 +147,21 @@ export function Dashboard() {
       handleFirestoreError(error, OperationType.LIST, 'expenses');
     });
 
+    // Listen to radar alerts
+    const qRadar = query(collection(db, 'radar_alerts'), where('landlordId', '==', uid), where('status', '==', 'active'));
+    const unsubRadar = onSnapshot(qRadar, (snapshot) => {
+      setRadarAlertsCount(snapshot.size);
+      const crit = snapshot.docs.filter(d => d.data().priority === 'Critique').length;
+      setCriticalRadarCount(crit);
+    }, () => {});
+
     return () => {
       unsubTenants();
       unsubProperties();
       unsubPayments();
       unsubIssues();
       unsubExpenses();
+      unsubRadar();
     };
   }, []);
 
@@ -361,6 +373,43 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+
+      {/* Imomgest Radar Alert Banner */}
+      {radarAlertsCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white rounded-2xl p-4 sm:p-5 border border-indigo-800 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+        >
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center shrink-0 shadow-sm">
+              <Radio className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-sm sm:text-base text-white">
+                  Imomgest Radar : {radarAlertsCount} situation(s) opérationnelle(s)
+                </h3>
+                {criticalRadarCount > 0 && (
+                  <span className="text-[10px] font-black bg-rose-500 text-white px-2 py-0.5 rounded-full">
+                    {criticalRadarCount} critique(s)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-indigo-200/80 mt-0.5">
+                Surveillance active : impayés, expirations de baux, pannes urgentes ou vacances locatives détectées.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/radar"
+            className="shrink-0 flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all cursor-pointer"
+          >
+            <span>Consulter le Radar</span>
+            <ArrowUpRight className="w-4 h-4" />
+          </Link>
+        </motion.div>
+      )}
 
       {/* Pro recommendation banner if reached 2 tenants */}
       {isProRecommended && (

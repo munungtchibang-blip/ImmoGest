@@ -254,6 +254,97 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["landlordId", "tenantId", "propertyId", "startDate", "rentAmount", "depositAmount", "status", "createdAt", "updatedAt"]
+    },
+    "RadarAlert": {
+      "title": "RadarAlert",
+      "description": "Intelligent automated alert detected by Imomgest Radar surveillance module.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "type": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Critique", "Haute", "Moyenne", "Info"] },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "resolved", "dismissed"] },
+        "entityType": { "type": "string" },
+        "entityId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "dedupKey": { "type": "string" },
+        "actionType": { "type": "string" },
+        "isAnomaly": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "type", "priority", "title", "description", "status", "dedupKey", "createdAt"]
+    },
+    "RadarSetting": {
+      "title": "RadarSetting",
+      "description": "Customizable threshold settings for Imomgest Radar surveillance.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "rentGraceDays": { "type": "number" },
+        "contractExpiryAlertDays": { "type": "number" },
+        "vacancyAlertDays": { "type": "number" },
+        "monthlyBudgetLimit": { "type": "number" },
+        "maintenanceCostSpikePercentage": { "type": "number" },
+        "urgentMaintenanceMaxHours": { "type": "number" },
+        "invitationTimeoutDays": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "updatedAt"]
+    },
+    "NotificationLog": {
+      "title": "NotificationLog",
+      "description": "Multi-channel dispatch log with idempotency, delivery status, and retry metadata.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "recipientContact": { "type": "string" },
+        "channel": { "type": "string", "enum": ["in_app", "email", "sms", "whatsapp"] },
+        "event": { "type": "string" },
+        "idempotencyKey": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "sent", "delivered", "failed"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "errorDetails": { "type": "string" },
+        "retryCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "deliveredAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channel", "event", "idempotencyKey", "status", "title", "message", "createdAt"]
+    },
+    "NotificationPreference": {
+      "title": "NotificationPreference",
+      "description": "User notification channel preferences and event subscriptions.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "emailEnabled": { "type": "boolean" },
+        "smsEnabled": { "type": "boolean" },
+        "whatsappEnabled": { "type": "boolean" },
+        "inAppEnabled": { "type": "boolean" },
+        "subscribedEvents": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "updatedAt"]
+    },
+    "NotificationTemplate": {
+      "title": "NotificationTemplate",
+      "description": "Customizable notification template per event and channel.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "event": { "type": "string" },
+        "channel": { "type": "string" },
+        "titleTemplate": { "type": "string" },
+        "bodyTemplate": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["event", "channel", "titleTemplate", "bodyTemplate"]
     }
   },
   "firestore": {
@@ -298,6 +389,36 @@
         "$ref": "#/entities/Contract"
       },
       "description": "Collection of lease contracts."
+    },
+    "/radar_alerts/{alertId}": {
+      "schema": {
+        "$ref": "#/entities/RadarAlert"
+      },
+      "description": "Collection of radar alerts."
+    },
+    "/radar_settings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/RadarSetting"
+      },
+      "description": "Collection of radar settings."
+    },
+    "/notification_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/NotificationLog"
+      },
+      "description": "Collection of multi-channel notification dispatch logs."
+    },
+    "/notification_preferences/{prefId}": {
+      "schema": {
+        "$ref": "#/entities/NotificationPreference"
+      },
+      "description": "Collection of notification preferences."
+    },
+    "/notification_templates/{templateId}": {
+      "schema": {
+        "$ref": "#/entities/NotificationTemplate"
+      },
+      "description": "Collection of notification templates."
     }
   }
 }

@@ -42,6 +42,8 @@ const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ defaul
 const PublicPay = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
 const Contracts = React.lazy(() => import('./pages/Contracts').then(m => ({ default: m.Contracts })));
 const TechnicianPortal = React.lazy(() => import('./pages/TechnicianPortal').then(m => ({ default: m.TechnicianPortal })));
+const Radar = React.lazy(() => import('./pages/Radar').then(m => ({ default: m.Radar })));
+const NotificationsCenter = React.lazy(() => import('./pages/NotificationsCenter').then(m => ({ default: m.NotificationsCenter })));
 
 function RouteLoadingFallback() {
   return (
@@ -615,6 +617,8 @@ export default function App() {
                 <Route path="expenses" element={<Expenses />} />
                 <Route path="maintenance" element={<Maintenance />} />
                 <Route path="contracts" element={<Contracts />} />
+                <Route path="radar" element={<Radar />} />
+                <Route path="notifications" element={<NotificationsCenter />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="tech" element={<TechnicianPortal onSwitchRole={() => setRole('landlord')} />} />

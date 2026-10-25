@@ -290,5 +290,37 @@ service cloud.firestore {
       allow create: if true;
       allow update, delete: if isAuthenticated();
     }
+
+    match /radar_alerts/{alertId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /radar_settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /notification_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if true;
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /notification_preferences/{prefId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAuthenticated();
+    }
+
+    match /notification_templates/{templateId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
   }
 }
