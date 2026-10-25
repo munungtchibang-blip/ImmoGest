@@ -1,6 +1,3 @@
-import { readFileSync, writeFileSync, rmSync } from 'fs';
-import { resolve } from 'path';
-
 /**
  * Empty mock test file to fulfill the requirement.
  * Setting up full emulator environments requires 'firebase-admin' and testing libraries.

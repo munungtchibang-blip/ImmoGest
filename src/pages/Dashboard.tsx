@@ -247,8 +247,9 @@ export function Dashboard() {
   const currentYear = today.getFullYear();
 
   const last12MonthsData = useMemo(() => {
+    const now = new Date();
     return Array.from({ length: 12 }).map((_, i) => {
-      const d = subMonths(today, 11 - i);
+      const d = subMonths(now, 11 - i);
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       
       const total = payments.reduce((sum, p) => {

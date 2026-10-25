@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Type, Sun, Moon, LogOut, CreditCard, ChevronRight, CheckCircle2, Globe, Trash2, AlertTriangle, Download } from 'lucide-react';
+import { User, Type, Sun, Moon, LogOut, CreditCard, CheckCircle2, Globe, Trash2, AlertTriangle, Download } from 'lucide-react';
 import { ProfileModal } from '../components/ProfileModal';
 import { logout, db, auth } from '../lib/firebase';
 import { collection, query, where, getDocs, deleteDoc, updateDoc, getDoc, doc } from 'firebase/firestore';
@@ -8,7 +8,7 @@ import { toast } from 'react-hot-toast';
 import { Logo } from '../components/Logo';
 
 export function Settings() {
-  const { t, i18n } = useTranslation();
+  const { i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<'general' | 'payments'>('general');
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);

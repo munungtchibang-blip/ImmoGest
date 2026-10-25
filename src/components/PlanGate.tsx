@@ -25,7 +25,7 @@ export function PlanGate({
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 sm:p-10 border border-gray-100 dark:border-gray-700 shadow-sm text-center max-w-xl mx-auto my-6 space-y-4">
+    <div data-feature={feature} className="bg-white dark:bg-gray-800 rounded-3xl p-6 sm:p-10 border border-gray-100 dark:border-gray-700 shadow-sm text-center max-w-xl mx-auto my-6 space-y-4">
       <div className="w-14 h-14 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
         <Lock className="w-7 h-7" />
       </div>

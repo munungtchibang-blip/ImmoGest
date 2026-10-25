@@ -41,6 +41,7 @@ const Reports = React.lazy(() => import('./pages/Reports').then(m => ({ default:
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const PublicPay = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
 const Contracts = React.lazy(() => import('./pages/Contracts').then(m => ({ default: m.Contracts })));
+const TechnicianPortal = React.lazy(() => import('./pages/TechnicianPortal').then(m => ({ default: m.TechnicianPortal })));
 
 function RouteLoadingFallback() {
   return (
@@ -74,7 +75,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
               setVerificationRequired(false);
               onSuccess();
             }
-          } catch (e) {
+          } catch {
             // ignore
           }
         }
@@ -94,7 +95,9 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         try {
           const url = new URL(code);
           code = url.searchParams.get('oobCode') || code;
-        } catch (_) {}
+        } catch {
+          // Keep original code if URL parsing fails
+        }
       }
       
       await applyActionCode(auth, code);
@@ -111,7 +114,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         setVerificationRequired(false);
         setIsRegister(false);
       }
-    } catch (error: any) {
+    } catch {
       toast.error(`Le lien de validation est invalide ou a expiré.`);
     } finally {
       setLoading(false);
@@ -277,7 +280,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
                      auth.languageCode = 'fr';
                      await sendEmailVerification(auth.currentUser);
                      toast.success("Nouvel email envoyé ! Vérifiez vos SPAMS.");
-                   } catch(e: any) {
+                   } catch {
                      toast.error("Erreur, veuillez réessayer plus tard.");
                    } finally {
                      setLoading(false);
@@ -389,7 +392,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<'landlord' | 'tenant' | null>(null);
+  const [role, setRole] = useState<'landlord' | 'tenant' | 'technician' | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -577,6 +580,23 @@ export default function App() {
     );
   }
 
+  if (role === 'technician') {
+    return (
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Toaster />
+          <React.Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+              <Route path="/" element={<TechnicianPortal onSwitchRole={() => setRole('landlord')} />} />
+              <Route path="/tech" element={<TechnicianPortal onSwitchRole={() => setRole('landlord')} />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </React.Suspense>
+        </BrowserRouter>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
@@ -597,9 +617,11 @@ export default function App() {
                 <Route path="contracts" element={<Contracts />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="tech" element={<TechnicianPortal onSwitchRole={() => setRole('landlord')} />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Route>
               <Route path="/pay/:id" element={<PublicPay />} />
+              <Route path="/tech" element={<TechnicianPortal onSwitchRole={() => setRole('landlord')} />} />
             </Routes>
           </React.Suspense>
         </SubscriptionProvider>

@@ -4,11 +4,9 @@ import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   Plus, 
   Search, 
-  FileText, 
   FileSignature, 
   Trash2, 
   Edit, 
-  AlertTriangle, 
   Download, 
   Sparkles, 
   X,
@@ -290,9 +288,13 @@ export function Contracts() {
 
   const filteredContracts = useMemo(() => {
     return contracts.filter(c => {
+      const tenant = tenants.find(t => t.id === c.tenantId);
+      const prop = properties.find(p => p.id === c.propertyId);
+      const tenantName = tenant?.name || 'Locataire';
+      const propertyName = prop?.name || 'Bien immobilier';
       const matchesSearch = 
-        getTenantName(c.tenantId).toLowerCase().includes(searchTerm.toLowerCase()) ||
-        getPropertyName(c.propertyId).toLowerCase().includes(searchTerm.toLowerCase());
+        tenantName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        propertyName.toLowerCase().includes(searchTerm.toLowerCase());
       
       if (!matchesSearch) return false;
       if (selectedFilter === 'Tous') return true;
@@ -311,7 +313,7 @@ export function Contracts() {
     }).length;
     const totalVolume = contracts.reduce((sum, c) => sum + Number(c.rentAmount || 0), 0);
     return { total, active, expiringSoon, totalVolume };
-  }, [contracts]);
+  }, [contracts, nowTimestamp]);
 
   const getStatusColor = (status: string) => {
     switch (status) {

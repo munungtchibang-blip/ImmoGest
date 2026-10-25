@@ -3,8 +3,18 @@ import { X, Share, MoreVertical } from 'lucide-react';
 import { Logo } from './Logo';
 
 export function InstallPrompt() {
-  const [isInstallable, setIsInstallable] = useState(false);
-  const [browserContext, setBrowserContext] = useState<'ios' | 'android-chrome' | 'desktop' | 'unknown'>('unknown');
+  const [isInstallable, setIsInstallable] = useState(() => {
+    return typeof window !== 'undefined' && Boolean((window as any).deferredPrompt);
+  });
+  const [browserContext] = useState<'ios' | 'android-chrome' | 'desktop' | 'unknown'>(() => {
+    if (typeof window === 'undefined') return 'unknown';
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+    const isAndroid = /Android/.test(ua);
+    if (isIOS) return 'ios';
+    if (isAndroid) return 'android-chrome';
+    return 'desktop';
+  });
   const [dismissed, setDismissed] = useState(() => {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
     return isStandalone || localStorage.getItem('installPromptDismissed') === 'true';
@@ -13,18 +23,6 @@ export function InstallPrompt() {
   useEffect(() => {
     if (dismissed) return;
 
-    const ua = navigator.userAgent;
-    const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
-    const isAndroid = /Android/.test(ua);
-    
-    if (isIOS) {
-      setBrowserContext('ios');
-    } else if (isAndroid) {
-      setBrowserContext('android-chrome');
-    } else {
-      setBrowserContext('desktop');
-    }
-
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       (window as any).deferredPrompt = e;
@@ -32,10 +30,6 @@ export function InstallPrompt() {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    
-    if ((window as any).deferredPrompt) {
-      setIsInstallable(true);
-    }
 
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
   }, [dismissed]);

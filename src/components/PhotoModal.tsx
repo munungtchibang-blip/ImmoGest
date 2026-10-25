@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, ZoomIn } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface PhotoModalProps {
   url: string;

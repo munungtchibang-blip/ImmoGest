@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { updateProfile, updatePassword, deleteUser, EmailAuthProvider, reauthenticateWithCredential, getAuth } from 'firebase/auth';
+import { updateProfile, updatePassword, deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { db, auth } from '../lib/firebase';
 import { User, Lock, Save, X, Trash2, AlertTriangle } from 'lucide-react';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';

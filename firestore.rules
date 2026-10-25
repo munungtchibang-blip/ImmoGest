@@ -105,17 +105,37 @@ service cloud.firestore {
     }
 
     function isValidMaintenanceIssue(data) {
-      return hasOnlyAllowedFields(['title', 'propertyName', 'propertyId', 'tenantName', 'priority', 'landlordId', 'tenantId', 'description', 'status', 'notes', 'photoUrl', 'endDate', 'cost', 'duration', 'createdAt', 'updatedAt', 'tenantResponse']) &&
+      return hasOnlyAllowedFields([
+        'title', 'propertyName', 'propertyId', 'tenantName', 'priority', 'landlordId', 
+        'tenantId', 'description', 'status', 'notes', 'photoUrl', 'endDate', 'cost', 
+        'duration', 'createdAt', 'updatedAt', 'tenantResponse', 'ticketNumber',
+        'assignedTechnicianId', 'assignedTechnicianName', 'assignedTechnicianPhone',
+        'technicianNotes', 'beforePhotos', 'afterPhotos', 'partsUsed', 'partsCost',
+        'acceptedAt', 'startedAt', 'completedAt', 'closedAt', 'scheduledDate', 'category'
+      ]) &&
              isValidString(data.landlordId, 1, 100) &&
              isValidString(data.tenantId, 1, 100) &&
              isValidString(data.description, 1, 2000) &&
-             data.status in ["En attente", "En cours", "Résolu"] &&
+             data.status in ["En attente", "En cours", "Résolu", "Nouvelle", "En attente d'acceptation", "Acceptée", "En attente de pièces", "Terminée", "Clôturée"] &&
              (!('title' in data) || isValidString(data.title, 1, 200)) &&
              (!('priority' in data) || isValidString(data.priority, 1, 50)) &&
              (!('tenantName' in data) || isValidString(data.tenantName, 1, 150)) &&
              (!('propertyName' in data) || isValidOptionalString(data.propertyName, 0, 150)) &&
              (!('propertyId' in data) || isValidOptionalString(data.propertyId, 0, 100)) &&
-             (!('notes' in data) || isValidOptionalString(data.notes, 0, 1000)) &&
+             (!('ticketNumber' in data) || isValidOptionalString(data.ticketNumber, 0, 50)) &&
+             (!('assignedTechnicianId' in data) || isValidOptionalString(data.assignedTechnicianId, 0, 100)) &&
+             (!('assignedTechnicianName' in data) || isValidOptionalString(data.assignedTechnicianName, 0, 150)) &&
+             (!('assignedTechnicianPhone' in data) || isValidOptionalString(data.assignedTechnicianPhone, 0, 50)) &&
+             (!('technicianNotes' in data) || isValidOptionalString(data.technicianNotes, 0, 4000)) &&
+             (!('partsUsed' in data) || isValidOptionalString(data.partsUsed, 0, 2000)) &&
+             (!('partsCost' in data) || isPositiveNumber(data.partsCost)) &&
+             (!('scheduledDate' in data) || isValidOptionalString(data.scheduledDate, 0, 50)) &&
+             (!('acceptedAt' in data) || isValidOptionalString(data.acceptedAt, 0, 50)) &&
+             (!('startedAt' in data) || isValidOptionalString(data.startedAt, 0, 50)) &&
+             (!('completedAt' in data) || isValidOptionalString(data.completedAt, 0, 50)) &&
+             (!('closedAt' in data) || isValidOptionalString(data.closedAt, 0, 50)) &&
+             (!('category' in data) || isValidOptionalString(data.category, 0, 100)) &&
+             (!('notes' in data) || isValidOptionalString(data.notes, 0, 2000)) &&
              (!('photoUrl' in data) || isValidOptionalString(data.photoUrl, 0, 2000000)) &&
              (!('endDate' in data) || isValidDateString(data.endDate)) &&
              (!('cost' in data) || isPositiveNumber(data.cost)) &&
@@ -232,6 +252,13 @@ service cloud.firestore {
                        request.resource.data.landlordId == resource.data.landlordId &&
                        request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isOwner(resource.data.landlordId);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if isAuthenticated();
     }
 
     match /expenses/{expenseId} {

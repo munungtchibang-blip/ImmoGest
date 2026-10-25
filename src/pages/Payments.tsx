@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, getDocs, updateDoc, doc, getDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, updateDoc, doc, getDoc, addDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { CreditCard, Search, Download, ArrowLeft, Edit2, Trash2, FileSpreadsheet, X, Repeat, Sparkles, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Search, Download, ArrowLeft, Edit2, X, Sparkles, CheckCircle2 } from 'lucide-react';
 import { format, differenceInMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -316,7 +316,7 @@ export function Payments() {
                 <p className="text-gray-500 dark:text-gray-400">Aucun paiement trouvé.</p>
               </div>
             ) : (
-              Object.entries(groupedPayments).map(([tenantId, tenantPayments]) => {
+              Object.entries(groupedPayments).map(([tenantId, tenantPayments]: [string, any[]]) => {
                 const tenant = tenantsMap[tenantId];
                 return (
                   <div key={tenantId} className="border-b border-gray-100 dark:border-gray-700/80 last:border-0">
@@ -708,21 +708,6 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({ title, message, onConfirm, onCancel }: { title: string, message: string, onConfirm: () => void, onCancel: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{title}</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">{message}</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 py-2.5 px-4 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Annuler</button>
-          <button onClick={onConfirm} className="flex-1 py-2.5 px-4 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors">Confirmer</button>
-        </div>
       </div>
     </div>
   );

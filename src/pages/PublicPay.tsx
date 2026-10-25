@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, getDoc, addDoc, collection, query, where, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection, query, where, onSnapshot, deleteDoc, updateDoc, getDocs } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { 
   CreditCard, 
@@ -28,12 +28,77 @@ import {
   DollarSign, 
   Check, 
   Clock,
-  Layers
+  Layers,
+  Bell,
+  FileSignature,
+  ExternalLink
 } from 'lucide-react';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { PhotoModal } from '../components/PhotoModal';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import toast from 'react-hot-toast';
+
+function downloadContractPDF(contract: any, tenant: any) {
+  const docPdf = new jsPDF();
+  docPdf.setFillColor(30, 58, 138);
+  docPdf.rect(0, 0, 210, 40, 'F');
+  
+  docPdf.setTextColor(255, 255, 255);
+  docPdf.setFont("helvetica", "bold");
+  docPdf.setFontSize(20);
+  docPdf.text("CONTRAT DE BAIL À USAGE D'HABITATION", 105, 25, { align: "center" });
+
+  docPdf.setTextColor(31, 41, 55);
+  docPdf.setFontSize(10);
+  docPdf.setFont("helvetica", "normal");
+  docPdf.text(`Réf: BAIL-${(contract?.id || tenant.id).substring(0, 8).toUpperCase()}`, 14, 50);
+  docPdf.text(`Émis à Kinshasa le : ${new Date().toLocaleDateString('fr-FR')}`, 135, 50);
+
+  docPdf.setDrawColor(229, 231, 235);
+  docPdf.line(14, 55, 196, 55);
+
+  docPdf.setFont("helvetica", "bold");
+  docPdf.setFontSize(11);
+  docPdf.text("ARTICLE 1 : DÉSIGNATION DU LOCATAIRE & DU LOGEMENT", 14, 65);
+  docPdf.setFont("helvetica", "normal");
+  docPdf.text(`Locataire bénéficiaire : ${tenant.name}`, 14, 73);
+  docPdf.text(`Téléphone : ${tenant.phone || 'N/A'}`, 14, 80);
+  docPdf.text(`Adresse du bien loué : ${tenant.address || 'Logement conventionné'}`, 14, 87);
+  docPdf.text(`Type d'habitation : ${tenant.housingType || 'Appartement'}`, 14, 94);
+
+  docPdf.setFont("helvetica", "bold");
+  docPdf.text("ARTICLE 2 : DURÉE DU CONTRAT", 14, 106);
+  docPdf.setFont("helvetica", "normal");
+  const startDateStr = contract?.startDate ? new Date(contract.startDate).toLocaleDateString('fr-FR') : new Date(tenant.entryDate || Date.now()).toLocaleDateString('fr-FR');
+  const endDateStr = contract?.endDate ? new Date(contract.endDate).toLocaleDateString('fr-FR') : 'Durée indéterminée (tacite reconduction)';
+  docPdf.text(`Date de prise d'effet : ${startDateStr}`, 14, 114);
+  docPdf.text(`Échéance prévue : ${endDateStr}`, 14, 121);
+
+  docPdf.setFont("helvetica", "bold");
+  docPdf.text("ARTICLE 3 : LOYER, CAUTION ET PROVISIONS SUR CHARGES", 14, 133);
+  docPdf.setFont("helvetica", "normal");
+  docPdf.text(`Montant du loyer mensuel : ${tenant.monthlyRent} $ USD`, 14, 141);
+  docPdf.text(`Garantie locative / Caution : ${tenant.guaranteeAmount || 0} $ USD (${tenant.guaranteeStatus || 'Payée'})`, 14, 148);
+
+  const charges = Number(tenant.waterAmount || 0) + Number(tenant.electricityAmount || 0) + Number(tenant.syndicAmount || 0);
+  docPdf.text(`Charges locatives mensuelles prévisionnelles : ${charges} $ USD`, 14, 155);
+
+  docPdf.setFont("helvetica", "bold");
+  docPdf.text("ARTICLE 4 : CLAUSES & CONDITIONS PARTICULIÈRES (OHADA)", 14, 168);
+  docPdf.setFont("helvetica", "normal");
+  const clauses = contract?.clauses || "Le preneur s'oblige à payer le loyer à l'échéance convenue au plus tard le 5 de chaque mois, à jouir des lieux paisiblement en bon père de famille, et à assumer l'entretien locatif courant. Le bailleur assure la délivrance d'un logement salubre et le clos-couvert.";
+  const splitClauses = docPdf.splitTextToSize(clauses, 180);
+  docPdf.text(splitClauses, 14, 176);
+
+  const finalY = Math.min(265, 188 + splitClauses.length * 5);
+  docPdf.setFont("helvetica", "bold");
+  docPdf.text("Pour le Bailleur / Gestionnaire", 14, finalY);
+  docPdf.text("Pour le Locataire", 140, finalY);
+
+  docPdf.save(`contrat_bail_${tenant.name.replace(/\s+/g, '_')}.pdf`);
+  toast.success("Contrat de bail officiel téléchargé avec succès !");
+}
 
 function downloadSingleReceipt(payment: any, tenant: any) {
   const docPdf = new jsPDF();
@@ -211,7 +276,8 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const [isLandlordBlocked, setIsLandlordBlocked] = useState(false);
   const [showPhoto, setShowPhoto] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'report' | 'account' | 'contract'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'contract' | 'report' | 'notifications' | 'account'>('dashboard');
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   // Payment Form States
   const [paymentType, setPaymentType] = useState<string>('Loyer');
@@ -337,6 +403,14 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
           setExpenses(expData);
         });
 
+        // Realtime notifications listener
+        const qNotifs = query(collection(db, 'notifications'), where('tenantId', '==', tenantId));
+        const unsubNotifs = onSnapshot(qNotifs, (nSnap) => {
+          if (!isMounted) return;
+          const nData = nSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setNotifications(nData);
+        }, (err) => { console.warn("Notifications listener error", err); });
+
         // Fetch contract
         const qContract = query(collection(db, 'contracts'), where('tenantId', '==', tenantId));
         getDocs(qContract).then(cSnap => {
@@ -351,6 +425,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
           unsubPayments();
           unsubMaint();
           unsubExp();
+          unsubNotifs();
         };
 
       } catch (err: any) {
@@ -836,27 +911,69 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
       )}
 
       {/* Top Header Card */}
-      <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-blue-900 text-white px-6 pt-8 pb-24 rounded-b-[40px] shadow-sm relative">
-        <div className="max-w-md mx-auto flex justify-between items-center mb-4">
+      <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-blue-900 text-white px-6 pt-8 pb-20 rounded-b-[40px] shadow-sm relative">
+        <div className="max-w-5xl mx-auto flex justify-between items-center mb-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/20 text-white">
-                Portail Locataire Sécurisé
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+                Portail Personnel Locataire Sécurisé
               </span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight leading-none text-white">{tenant.name}</h1>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-white">{tenant.name}</h1>
+            <p className="opacity-90 flex items-center gap-2 text-xs sm:text-sm text-indigo-100 mt-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 
+              {tenant.address || 'Logement conventionné'} • {tenant.housingType || 'Appartement'}
+            </p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
-            <Building2 className="w-6 h-6 text-indigo-100" />
+          <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 shadow-inner">
+            <Building2 className="w-7 h-7 text-indigo-100" />
           </div>
         </div>
-        <p className="max-w-md mx-auto opacity-90 flex items-center gap-2 text-xs sm:text-sm text-indigo-100">
-          <span className="w-2 h-2 rounded-full bg-emerald-400"></span> 
-          {tenant.address || 'Logement conventionné'}
-        </p>
+
+        {/* Desktop & Tablet Navigation Tab Bar */}
+        <div className="max-w-5xl mx-auto mt-6 flex items-center gap-2 overflow-x-auto hide-scrollbar pb-1">
+          {[
+            { id: 'dashboard', label: 'Tableau de bord', icon: Building2 },
+            { id: 'pay', label: 'Régler Loyer', icon: CreditCard },
+            { id: 'history', label: 'Quittances & Historique', icon: History },
+            { id: 'contract', label: 'Mon Contrat', icon: FileSignature },
+            { id: 'report', label: 'Mes Réparations', icon: Wrench },
+            { id: 'notifications', label: 'Mes Notifications', icon: Bell, badge: notifications.length },
+            { id: 'account', label: 'Mon Compte', icon: User },
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === 'pay') {
+                    setPaymentType('Loyer');
+                    setPaymentAmount(String(remainingThisMonth > 0 ? remainingThisMonth : tenant.monthlyRent));
+                    setPaymentStep(1);
+                  }
+                  setActiveTab(tab.id as any);
+                }}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer whitespace-nowrap ${
+                  isActive
+                    ? 'bg-white text-indigo-950 shadow-md'
+                    : 'bg-white/10 text-white hover:bg-white/20'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400 text-indigo-950 font-black">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 -mt-16 relative z-10 space-y-4">
+      <div className="max-w-5xl mx-auto px-4 -mt-10 relative z-10 space-y-4">
 
         {/* ======================================================== */}
         {/* TAB 1: DASHBOARD (ACCUEIL) */}
@@ -1802,6 +1919,234 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
         )}
 
         {/* ======================================================== */}
+        {/* TAB 4: RUBRIQUE MON CONTRAT (DEMANDÉE PAR L'UTILISATEUR) */}
+        {/* ======================================================== */}
+        {activeTab === 'contract' && (
+          <div className="space-y-4 tab-enter">
+            {/* Header Card */}
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4 card-enter">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-gray-100 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <FileSignature className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-gray-900">Mon Contrat de Bail</h2>
+                    <p className="text-xs text-gray-500">Bail d'habitation en vigueur et documents locatifs officiels</p>
+                  </div>
+                </div>
+
+                <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  {contract?.status || 'Bail Actif'}
+                </span>
+              </div>
+
+              {/* Grid Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Logement Occupé</span>
+                  <p className="text-sm font-extrabold text-gray-900">{tenant.address || 'Logement conventionné'}</p>
+                  <p className="text-[11px] text-gray-500">{tenant.housingType || 'Appartement'}</p>
+                </div>
+
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Loyer Mensuel</span>
+                  <p className="text-xl font-black text-indigo-700">{tenant.monthlyRent} $</p>
+                  <p className="text-[11px] text-gray-500">Exigible le 5 de chaque mois</p>
+                </div>
+
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dépôt de Garantie</span>
+                  <p className="text-xl font-black text-emerald-700">{tenant.guaranteeAmount || 0} $</p>
+                  <p className="text-[11px] text-emerald-600 font-semibold">{tenant.guaranteeStatus || 'Payée'}</p>
+                </div>
+
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Date de Prise d'Effet</span>
+                  <p className="text-sm font-bold text-gray-800">
+                    {new Date(contract?.startDate || tenant.entryDate || dToday).toLocaleDateString('fr-FR')}
+                  </p>
+                  <p className="text-[11px] text-gray-400">Entrée dans les lieux</p>
+                </div>
+
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Date d'Échéance</span>
+                  <p className="text-sm font-bold text-gray-800">
+                    {contract?.endDate ? new Date(contract.endDate).toLocaleDateString('fr-FR') : 'Durée indéterminée'}
+                  </p>
+                  <p className="text-[11px] text-gray-400">Tacite reconduction</p>
+                </div>
+
+                <div className="p-3.5 bg-gray-50 rounded-2xl border border-gray-100 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Charges Mensuelles</span>
+                  <p className="text-sm font-bold text-gray-800">
+                    {Number(tenant.waterAmount || 0) + Number(tenant.electricityAmount || 0) + Number(tenant.syndicAmount || 0)} $
+                  </p>
+                  <p className="text-[11px] text-gray-500">Eau, Élec, Syndic</p>
+                </div>
+              </div>
+
+              {/* Specific Clauses */}
+              <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/60 space-y-2 text-xs">
+                <span className="font-extrabold text-indigo-950 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                  Clauses Particulières & Engagements Locatifs
+                </span>
+                <p className="text-gray-700 leading-relaxed">
+                  {contract?.clauses || "Le preneur s'oblige à payer son loyer à terme échu au plus tard le 5 de chaque mois, à jouir des lieux paisiblement en bon père de famille, et à assumer les réparations locatives courantes. Le bailleur assure le clos, le couvert et la délivrance d'un logement salubre."}
+                </p>
+              </div>
+
+              {/* Download Actions */}
+              <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => downloadContractPDF(contract, tenant)}
+                  className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Télécharger mon Contrat de Bail (PDF Officiel)</span>
+                </button>
+
+                {contract?.attachmentUrl && (
+                  <a
+                    href={contract.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Pièce Jointe du Bail</span>
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 5: RUBRIQUE MES NOTIFICATIONS (DEMANDÉE PAR L'UTILISATEUR) */}
+        {/* ======================================================== */}
+        {activeTab === 'notifications' && (
+          <div className="space-y-4 tab-enter">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4 card-enter">
+              <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black text-gray-900">Mes Notifications</h2>
+                    <p className="text-xs text-gray-500">Rappels de loyer, quittances et alertes logement</p>
+                  </div>
+                </div>
+
+                <span className="text-xs font-bold text-indigo-600 px-2.5 py-1 rounded-full bg-indigo-50">
+                  {notifications.length + 2} alertes
+                </span>
+              </div>
+
+              {/* Smart system notifications */}
+              <div className="space-y-2.5">
+                {/* 1. Rent reminder */}
+                <div className={`p-4 rounded-2xl border flex items-start gap-3 ${
+                  remainingThisMonth > 0 
+                    ? 'bg-amber-50/80 border-amber-200 text-amber-950' 
+                    : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                }`}>
+                  <Calendar className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold">
+                        {remainingThisMonth > 0 ? "Échéance de loyer en cours" : "Loyer soldé pour ce mois"}
+                      </span>
+                      <span className="text-[10px] text-gray-400">Ce mois</span>
+                    </div>
+                    <p className="text-gray-600 mt-1">
+                      {remainingThisMonth > 0 
+                        ? `Votre loyer de ${dToday.toLocaleDateString('fr-FR', { month: 'long' })} présente un solde restant de ${remainingThisMonth} $. Vous pouvez le régler directement en ligne.`
+                        : "Votre compte est entièrement à jour pour ce mois-ci. Merci pour votre ponctualité !"}
+                    </p>
+                    {remainingThisMonth > 0 && (
+                      <button
+                        onClick={() => {
+                          setPaymentType('Loyer');
+                          setPaymentAmount(String(remainingThisMonth));
+                          setActiveTab('pay');
+                        }}
+                        className="mt-2 px-3 py-1 bg-amber-600 text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer"
+                      >
+                        Régler maintenant
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Quittances notification */}
+                {payments.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-blue-950 flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold">Quittances de paiement disponibles</span>
+                        <span className="text-[10px] text-gray-400">Récents</span>
+                      </div>
+                      <p className="text-gray-600 mt-1">
+                        Vos {payments.length} quittance(s) de loyer officielles sont générées et prêtes à être téléchargées au format PDF avec signature.
+                      </p>
+                      <button
+                        onClick={() => setActiveTab('history')}
+                        className="mt-2 px-3 py-1 bg-blue-600 text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer"
+                      >
+                        Consulter mes quittances
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Maintenance technician notification */}
+                {maintenances.some(m => m.status === 'En cours' || m.assignedTechnicianName) && (
+                  <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-950 flex items-start gap-3">
+                    <Wrench className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold">Suivi d'intervention technique</span>
+                        <span className="text-[10px] text-gray-400">En cours</span>
+                      </div>
+                      <p className="text-gray-600 mt-1">
+                        Un technicien de maintenance a été assigné à l'un de vos signalements de réparation.
+                      </p>
+                      <button
+                        onClick={() => setActiveTab('report')}
+                        className="mt-2 px-3 py-1 bg-indigo-600 text-white rounded-lg font-bold text-[11px] shadow-xs cursor-pointer"
+                      >
+                        Suivre les réparations
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom notifications from Firestore */}
+                {notifications.map((n) => (
+                  <div key={n.id} className="p-4 rounded-2xl bg-gray-50 border border-gray-100 flex items-start gap-3">
+                    <Bell className="w-5 h-5 text-gray-500 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-extrabold text-gray-900">{n.title}</span>
+                        <span className="text-[10px] text-gray-400">
+                          {n.createdAt ? new Date(n.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) : ''}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 mt-1">{n.message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
         {/* TAB 5: ESPACE COMPTE (MODERNISÉ AVEC SÉCURITÉ & SUPPRESSION) */}
         {/* ======================================================== */}
         {activeTab === 'account' && (
@@ -1993,62 +2338,89 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
       </div>
 
       {/* Modern Bottom Navigation Bar */}
-      <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around p-2 pb-5 z-40 shadow-[0_-4px_25px_-5px_rgba(0,0,0,0.08)]">
+      <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex items-center justify-around px-1 py-2 pb-5 z-40 shadow-[0_-4px_25px_-5px_rgba(0,0,0,0.08)]">
         <button 
           onClick={() => setActiveTab('dashboard')} 
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-            activeTab === 'dashboard' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'dashboard' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
           }`}
         >
           <Building2 className="w-5 h-5" />
-          <span className="text-[10px] uppercase font-bold tracking-wider">Accueil</span>
+          <span className="text-[9px] uppercase font-bold tracking-tight">Accueil</span>
         </button>
 
         <button 
           onClick={() => { 
             if (tenant) { 
               setPaymentType('Loyer'); 
-              setPaymentAmount(tenant.monthlyRent); 
+              setPaymentAmount(String(remainingThisMonth > 0 ? remainingThisMonth : tenant.monthlyRent)); 
             } 
             setActiveTab('pay'); 
             setPaymentStep(1); 
           }} 
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-            activeTab === 'pay' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'pay' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
           }`}
         >
           <CreditCard className="w-5 h-5" />
-          <span className="text-[10px] uppercase font-bold tracking-wider">Payer</span>
+          <span className="text-[9px] uppercase font-bold tracking-tight">Payer</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('history')} 
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-            activeTab === 'history' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'history' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
           }`}
         >
           <History className="w-5 h-5" />
-          <span className="text-[10px] uppercase font-bold tracking-wider">Historique</span>
+          <span className="text-[9px] uppercase font-bold tracking-tight">Reçus</span>
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('contract')} 
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'contract' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <FileSignature className="w-5 h-5" />
+          <span className="text-[9px] uppercase font-bold tracking-tight">Bail</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('report')} 
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-            activeTab === 'report' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'report' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
           }`}
         >
-          <MessageSquare className="w-5 h-5" />
-          <span className="text-[10px] uppercase font-bold tracking-wider">Signalements</span>
+          <Wrench className="w-5 h-5" />
+          <span className="text-[9px] uppercase font-bold tracking-tight">Pannes</span>
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('notifications')} 
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all relative ${
+            activeTab === 'notifications' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <div className="relative">
+            <Bell className="w-5 h-5" />
+            {notifications.length > 0 && (
+              <span className="absolute -top-1 -right-1.5 w-3.5 h-3.5 bg-amber-500 text-white rounded-full text-[8px] font-black flex items-center justify-center">
+                {notifications.length}
+              </span>
+            )}
+          </div>
+          <span className="text-[9px] uppercase font-bold tracking-tight">Alertes</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('account')} 
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all ${
-            activeTab === 'account' ? 'text-indigo-600 font-bold' : 'text-gray-400 hover:text-gray-600'
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'account' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
           }`}
         >
           <User className="w-5 h-5" />
-          <span className="text-[10px] uppercase font-bold tracking-wider">Compte</span>
+          <span className="text-[9px] uppercase font-bold tracking-tight">Compte</span>
         </button>
       </div>
 

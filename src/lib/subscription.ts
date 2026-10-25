@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db, auth } from './firebase';
 
 export type CurrencyType = 'USD' | 'CDF';

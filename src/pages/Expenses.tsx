@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Receipt, Plus, ArrowLeft, Trash2, X, Sparkles, Lock, TrendingDown, ChevronRight, ChevronDown } from 'lucide-react';
+import { Receipt, Plus, ArrowLeft, Trash2, X, Sparkles, TrendingDown, ChevronRight, ChevronDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import toast from 'react-hot-toast';
 import { useSubscription } from '../context/SubscriptionContext';
 
 export function Expenses() {
@@ -17,7 +18,6 @@ export function Expenses() {
   const [showProRecommendModal, setShowProRecommendModal] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -66,7 +66,7 @@ export function Expenses() {
       setExpenseToDelete(null);
     } catch (e) {
       console.error(e);
-      setError("Erreur lors de la suppression de la dépense.");
+      toast.error("Erreur lors de la suppression de la dépense.");
     }
   };
 

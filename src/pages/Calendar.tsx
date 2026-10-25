@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Calendar as CalendarIcon, ArrowLeft, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
 import { 
   format, 
   addMonths, 
@@ -20,8 +20,8 @@ import { fr } from 'date-fns/locale';
 
 export function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const selectedMonth = currentDate.getMonth();
+  const selectedYear = currentDate.getFullYear();
   const [payments, setPayments] = useState<any[]>([]);
   const [maintenance, setMaintenance] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
@@ -67,19 +67,11 @@ export function Calendar() {
     };
   }, []);
 
-  useEffect(() => {
-    setCurrentDate(new Date(selectedYear, selectedMonth, 1));
-  }, [selectedMonth, selectedYear]);
-
   const nextMonth = () => {
-    const next = addMonths(currentDate, 1);
-    setSelectedMonth(next.getMonth());
-    setSelectedYear(next.getFullYear());
+    setCurrentDate(prev => addMonths(prev, 1));
   };
   const prevMonth = () => {
-    const prev = subMonths(currentDate, 1);
-    setSelectedMonth(prev.getMonth());
-    setSelectedYear(prev.getFullYear());
+    setCurrentDate(prev => subMonths(prev, 1));
   };
 
   const monthStart = startOfMonth(currentDate);
@@ -231,7 +223,7 @@ export function Calendar() {
           <div className="flex gap-2">
             <select 
               value={selectedMonth} 
-              onChange={e => setSelectedMonth(Number(e.target.value))}
+              onChange={e => setCurrentDate(prev => new Date(prev.getFullYear(), Number(e.target.value), 1))}
               className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white outline-none"
             >
               {Array.from({ length: 12 }).map((_, i) => (
@@ -240,7 +232,7 @@ export function Calendar() {
             </select>
             <select 
               value={selectedYear} 
-              onChange={e => setSelectedYear(Number(e.target.value))}
+              onChange={e => setCurrentDate(prev => new Date(Number(e.target.value), prev.getMonth(), 1))}
               className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white outline-none"
             >
               {Array.from({ length: 10 }).map((_, i) => {

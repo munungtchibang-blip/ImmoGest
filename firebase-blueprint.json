@@ -106,7 +106,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["Loyer", "Garantie"],
+          "enum": ["Loyer", "Garantie", "Avance", "Eau", "Électricité", "Frais syndics"],
           "description": "What the payment is for."
         },
         "notes": {
@@ -122,7 +122,7 @@
     },
     "MaintenanceIssue": {
       "title": "MaintenanceIssue",
-      "description": "Represents a maintenance issue reported for a property.",
+      "description": "Represents a maintenance issue reported for a property and its technician intervention.",
       "type": "object",
       "properties": {
         "landlordId": {
@@ -133,27 +133,58 @@
           "type": "string",
           "description": "The ID of the tenant associated with the property."
         },
+        "ticketNumber": {
+          "type": "string",
+          "description": "Human-readable intervention reference number (e.g. INT-2026-001)"
+        },
         "description": {
           "type": "string",
           "description": "Description of the issue (e.g., water leak)."
         },
         "status": {
           "type": "string",
-          "enum": ["En attente", "En cours", "Résolu"],
+          "enum": ["En attente", "En cours", "Résolu", "Nouvelle", "En attente d'acceptation", "Acceptée", "En attente de pièces", "Terminée", "Clôturée"],
           "description": "Current status of the issue."
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["Basse", "Moyenne", "Haute", "Urgente"]
         },
         "notes": {
           "type": "string",
           "description": "Additional notes from the landlord."
         },
+        "technicianNotes": {
+          "type": "string",
+          "description": "Intervention report and technical diagnostic from the technician."
+        },
+        "assignedTechnicianId": {
+          "type": "string",
+          "description": "UID or identifier of the assigned technician."
+        },
+        "assignedTechnicianName": {
+          "type": "string",
+          "description": "Name of the assigned technician."
+        },
+        "assignedTechnicianPhone": {
+          "type": "string",
+          "description": "Phone number of the assigned technician."
+        },
+        "partsUsed": {
+          "type": "string",
+          "description": "List or details of replacement parts used or required."
+        },
+        "partsCost": {
+          "type": "number",
+          "description": "Cost of parts."
+        },
+        "scheduledDate": {
+          "type": "string",
+          "description": "Scheduled intervention date."
+        },
         "photoUrl": {
           "type": "string",
-          "description": "Optional URL to a photo of the issue."
-        },
-        "endDate": {
-          "type": "string",
-          "format": "date-time",
-          "description": "Optional date when the issue was resolved."
+          "description": "Optional URL to initial photo of the issue."
         },
         "cost": {
           "type": "number",
@@ -173,6 +204,21 @@
         }
       },
       "required": ["landlordId", "tenantId", "description", "status", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for payment reminders, maintenance updates, and announcements.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["payment", "maintenance", "system", "contract"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "type", "createdAt"]
     },
     "Expense": {
       "title": "Expense",
@@ -227,7 +273,13 @@
       "schema": {
         "$ref": "#/entities/MaintenanceIssue"
       },
-      "description": "Collection of maintenance issues."
+      "description": "Collection of maintenance issues and technician interventions."
+    },
+    "/notifications/{notificationId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Collection of notifications for tenants and landlords."
     },
     "/expenses/{expenseId}": {
       "schema": {

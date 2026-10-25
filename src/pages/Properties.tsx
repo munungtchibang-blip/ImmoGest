@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
-import { Building2, Plus, ArrowLeft, Trash2, Home, Sparkles, ChevronRight } from 'lucide-react';
+import { Building2, Plus, ArrowLeft, Trash2, Home, Sparkles, ChevronRight, MapPin } from 'lucide-react';
 import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
