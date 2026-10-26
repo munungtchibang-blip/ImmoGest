@@ -345,6 +345,128 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["event", "channel", "titleTemplate", "bodyTemplate"]
+    },
+    "Equipment": {
+      "title": "Equipment",
+      "description": "Building asset or technical equipment registered for preventive maintenance.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Pompe à eau", "Groupe électrogène", "Ascenseur", "Climatiseur", "Tableau électrique", "Citerne d'eau", "Extincteur", "Portail motorisé", "Autre"] },
+        "brand": { "type": "string" },
+        "model": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "installationDate": { "type": "string", "format": "date-time" },
+        "warrantyEnd": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Opérationnel", "En panne", "En révision", "Remplacé"] },
+        "location": { "type": "string" },
+        "notes": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "propertyId", "name", "category", "status", "createdAt"]
+    },
+    "PreventiveMaintenance": {
+      "title": "PreventiveMaintenance",
+      "description": "Scheduled periodic preventive maintenance task for a registered equipment.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "equipmentId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "title": { "type": "string" },
+        "frequency": { "type": "string", "enum": ["Mensuelle", "Trimestrielle", "Semestrielle", "Annuelle"] },
+        "nextDueDate": { "type": "string", "format": "date-time" },
+        "lastDoneDate": { "type": "string", "format": "date-time" },
+        "assignedTechnicianId": { "type": "string" },
+        "assignedTechnicianName": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Basse", "Moyenne", "Haute", "Urgente"] },
+        "status": { "type": "string", "enum": ["Planifiée", "En retard", "En cours", "Terminée"] },
+        "checklist": { "type": "string" },
+        "estimatedCost": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "equipmentId", "title", "frequency", "nextDueDate", "status", "createdAt"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "Property operational budget limits and ceilings.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "year": { "type": "number" },
+        "month": { "type": "number" },
+        "category": { "type": "string" },
+        "ceilingAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "year", "category", "ceilingAmount", "createdAt"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "External vendor, contractor, or service supplier directory.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "contactName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "specialty": { "type": "string" },
+        "address": { "type": "string" },
+        "notes": { "type": "string" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "companyName", "phone", "createdAt"]
+    },
+    "TechnicianAccount": {
+      "title": "TechnicianAccount",
+      "description": "Technician registered and authorized by the landlord to access the standalone technician portal.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "specialty": { "type": "string" },
+        "status": { "type": "string", "enum": ["Actif", "Inactif", "Suspendu"] },
+        "accessCode": { "type": "string" },
+        "notes": { "type": "string" },
+        "hourlyRate": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "name", "phone", "specialty", "status", "accessCode", "createdAt"]
+    },
+    "FinancialReport": {
+      "title": "FinancialReport",
+      "description": "Saved automated periodic financial statement report.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "periodType": { "type": "string", "enum": ["Mensuel", "Trimestriel", "Annuel", "Personnalisé"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "endDate": { "type": "string", "format": "date-time" },
+        "propertyId": { "type": "string" },
+        "totalExpected": { "type": "number" },
+        "totalCollected": { "type": "number" },
+        "totalArrears": { "type": "number" },
+        "totalExpenses": { "type": "number" },
+        "netIncome": { "type": "number" },
+        "occupancyRate": { "type": "number" },
+        "comparison": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["landlordId", "periodType", "startDate", "endDate", "totalExpected", "totalCollected", "totalExpenses", "netIncome", "createdAt"]
     }
   },
   "firestore": {
@@ -419,6 +541,42 @@
         "$ref": "#/entities/NotificationTemplate"
       },
       "description": "Collection of notification templates."
+    },
+    "/equipment/{equipmentId}": {
+      "schema": {
+        "$ref": "#/entities/Equipment"
+      },
+      "description": "Collection of technical equipment for preventive maintenance."
+    },
+    "/preventive_maintenance/{pmId}": {
+      "schema": {
+        "$ref": "#/entities/PreventiveMaintenance"
+      },
+      "description": "Collection of scheduled preventive maintenance tasks."
+    },
+    "/budgets/{budgetId}": {
+      "schema": {
+        "$ref": "#/entities/Budget"
+      },
+      "description": "Collection of budget ceilings and monitoring."
+    },
+    "/suppliers/{supplierId}": {
+      "schema": {
+        "$ref": "#/entities/Supplier"
+      },
+      "description": "Collection of suppliers and contractors."
+    },
+    "/technicians/{technicianId}": {
+      "schema": {
+        "$ref": "#/entities/TechnicianAccount"
+      },
+      "description": "Collection of technicians registered by landlords with their access credentials."
+    },
+    "/financial_reports/{reportId}": {
+      "schema": {
+        "$ref": "#/entities/FinancialReport"
+      },
+      "description": "Collection of saved periodic financial reports."
     }
   }
 }

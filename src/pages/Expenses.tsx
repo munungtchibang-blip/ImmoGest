@@ -8,8 +8,11 @@ import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { useSubscription } from '../context/SubscriptionContext';
 
+import { BudgetAndSupplierManager } from '../components/BudgetAndSupplierManager';
+
 export function Expenses() {
   const { subscription, openSubscriptionModal } = useSubscription();
+  const [activeView, setActiveView] = useState<'expenses' | 'budgets'>('expenses');
   const [expenses, setExpenses] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
@@ -76,10 +79,41 @@ export function Expenses() {
         <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" /> Retour au tableau de bord
       </Link>
 
+      {/* View Switcher */}
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 pb-2">
+        <button
+          onClick={() => setActiveView('expenses')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeView === 'expenses'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <Receipt className="w-4 h-4" />
+          <span>Dépenses Réelles</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">{expenses.length}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveView('budgets')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeView === 'budgets'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Plafonds Budgétaires & Fournisseurs</span>
+        </button>
+      </div>
+
+      {activeView === 'budgets' ? (
+        <BudgetAndSupplierManager expenses={expenses} properties={properties} />
+      ) : (
+        <>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">Dépenses</h1>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white transition-colors">Dépenses d'exploitation</h1>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300">
               {expenses.length} enregistrement{expenses.length > 1 ? 's' : ''}
             </span>
@@ -207,6 +241,8 @@ export function Expenses() {
             )}
           </div>
         </div>
+      )}
+      </>
       )}
 
       {showAddForm && (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, getDocs, where } from 'firebase/firestore';
 import { db, auth, logout } from '../lib/firebase';
 import { 
   Wrench, 
@@ -14,7 +14,8 @@ import {
   MapPin, 
   Search, 
   FileCheck2,
-  PackageCheck
+  PackageCheck,
+  ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -25,16 +26,30 @@ interface TechnicianPortalProps {
   onSwitchRole?: () => void;
 }
 
-export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps) {
+export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
   const [activeTab, setActiveTab] = useState<'tasks' | 'history' | 'calendar' | 'account'>('tasks');
   const [interventions, setInterventions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const currentUser = auth.currentUser;
+
+  // Independent technician session
+  const [techSession, setTechSession] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('technician_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [loading, setLoading] = useState(() => Boolean(auth.currentUser || localStorage.getItem('technician_session')));
   const [selectedIntervention, setSelectedIntervention] = useState<any | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [photoToView, setPhotoToView] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [codeChecking, setCodeChecking] = useState(false);
 
   // Report Form state
   const [reportText, setReportText] = useState('');
@@ -45,27 +60,62 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps) {
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentUser = auth.currentUser;
+  const handleVerifyAccessCode = async (code: string) => {
+    if (!code.trim()) return;
+    setCodeChecking(true);
+    try {
+      const q = query(collection(db, 'technicians'), where('accessCode', '==', code.trim().toUpperCase()));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const raw = snap.docs[0].data();
+        const data: any = { id: snap.docs[0].id, ...raw };
+        setTechSession(data);
+        localStorage.setItem('technician_session', JSON.stringify(data));
+        toast.success(`Bienvenue, ${data.name || 'Technicien'} ! Accès autorisé.`);
+      } else {
+        toast.error("Code d'accès non reconnu ou invalide.");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur de connexion.");
+    } finally {
+      setCodeChecking(false);
+    }
+  };
+
+  // Check URL param ?code=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get('code');
+    if (codeParam && (!techSession || techSession.accessCode !== codeParam)) {
+      setTimeout(() => {
+        handleVerifyAccessCode(codeParam);
+      }, 0);
+    }
+  }, [techSession]);
 
   useEffect(() => {
-    if (!currentUser) return;
-    const uid = currentUser.uid;
-    const userEmail = currentUser.email || '';
-    const userPhone = currentUser.phoneNumber || '';
+    // Determine technician identity: either logged in firebase user or authenticated tech session
+    const effectiveId = techSession?.id || currentUser?.uid;
+    const effectivePhone = techSession?.phone || currentUser?.phoneNumber || '';
+    const effectiveName = techSession?.name || '';
+    const userEmail = currentUser?.email || techSession?.email || '';
 
-    // Listen to maintenance tasks assigned to this technician
-    // Or open tickets if authorized
+    if (!effectiveId && !techSession && !currentUser) {
+      return;
+    }
+
     const q = query(collection(db, 'maintenance'));
     const unsub = onSnapshot(q, (snapshot) => {
       const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       
-      // Filter interventions assigned to this technician or newly unassigned if public tech
       const techTickets = allDocs.filter((t: any) => {
-        if (t.assignedTechnicianId === uid) return true;
+        if (effectiveId && t.assignedTechnicianId === effectiveId) return true;
+        if (effectiveName && t.assignedTechnicianName === effectiveName) return true;
+        if (effectivePhone && t.assignedTechnicianPhone === effectivePhone) return true;
         if (userEmail && t.assignedTechnicianEmail === userEmail) return true;
-        if (userPhone && t.assignedTechnicianPhone === userPhone) return true;
-        // Also allow claiming new tickets if explicitly set
-        if (!t.assignedTechnicianId && (t.status === 'Nouvelle' || t.status === 'En attente')) return true;
+        // Also allow unassigned tickets for landlord of this technician
+        if (techSession?.landlordId && t.landlordId === techSession.landlordId && (!t.assignedTechnicianId || t.status === 'Nouvelle')) return true;
         return false;
       });
 
@@ -78,7 +128,7 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps) {
     });
 
     return () => unsub();
-  }, [currentUser]);
+  }, [currentUser, techSession]);
 
   const toggleDarkMode = () => {
     const next = !isDarkMode;
@@ -278,6 +328,59 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps) {
     }
   };
 
+  if (!currentUser && !techSession) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-sm w-full p-7 border border-gray-100 dark:border-gray-700 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-500/20">
+            <Wrench className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-black text-gray-900 dark:text-white">Portail Technicien Agréé</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 mb-5">
+            Espace d'intervention sur site. Entrez le code d'accès communiqué par votre propriétaire ou agence immobilière.
+          </p>
+
+          <form onSubmit={(e) => { e.preventDefault(); handleVerifyAccessCode(accessCodeInput); }} className="space-y-3.5">
+            <div>
+              <input
+                type="text"
+                placeholder="Ex: TECH-4892"
+                value={accessCodeInput}
+                onChange={e => setAccessCodeInput(e.target.value.toUpperCase())}
+                className="w-full text-center text-lg font-mono font-bold tracking-widest p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-gray-900 dark:text-white"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={codeChecking}
+              className="w-full py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span>{codeChecking ? 'Vérification...' : 'Accéder à mes interventions'}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </form>
+
+          <p className="text-[11px] text-gray-400 mt-5">
+            Vous pouvez également cliquer directement sur le lien reçu par WhatsApp ou SMS.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleTechnicianLogout = () => {
+    localStorage.removeItem('technician_session');
+    setTechSession(null);
+    if (currentUser) {
+      logout();
+    }
+    if (onSwitchRole) {
+      onSwitchRole();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col antialiased transition-colors duration-200">
       
@@ -296,24 +399,14 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps) {
                 </span>
               </div>
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                Espace Interventions & Maintenance sur site
+                {techSession ? `${techSession.name} (${techSession.specialty})` : 'Espace Interventions & Maintenance sur site'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {onSwitchRole && (
-              <button
-                onClick={onSwitchRole}
-                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 cursor-pointer transition-colors"
-                title="Bascule vers un autre espace"
-              >
-                <span>Changer d'espace</span>
-              </button>
-            )}
-
             <button
-              onClick={() => logout()}
+              onClick={handleTechnicianLogout}
               className="p-2 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
               title="Déconnexion"
             >

@@ -9,7 +9,6 @@ import {
   deleteDoc, 
   addDoc, 
   getDocs, 
-  orderBy, 
   limit 
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
@@ -19,26 +18,18 @@ import {
   MessageSquare, 
   Smartphone, 
   Send, 
-  CheckCircle2, 
-  Clock, 
-  AlertTriangle, 
   RefreshCw, 
-  Settings as SettingsIcon, 
   Archive, 
   Trash2, 
   Check, 
   Filter, 
   Search, 
-  Plus, 
   ExternalLink, 
   SlidersHorizontal, 
-  Users, 
   FileText, 
   DollarSign, 
   Wrench, 
   FileSignature, 
-  Building2, 
-  Eye, 
   X, 
   Layers 
 } from 'lucide-react';
@@ -50,9 +41,7 @@ import {
   renderTemplate, 
   sendAutomatedNotification, 
   retryNotificationLog, 
-  openWhatsAppChat, 
-  openSMSClient, 
-  openEmailClient 
+  openWhatsAppChat 
 } from '../services/notificationService';
 import toast from 'react-hot-toast';
 
@@ -63,7 +52,7 @@ export function NotificationsCenter() {
   // 1. In-App Notifications State
   const [inAppNotifs, setInAppNotifs] = useState<any[]>([]);
   const [inboxFilter, setInboxFilter] = useState<'unread' | 'all' | 'archived'>('unread');
-  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [typeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // 2. Dispatch Logs State
@@ -75,9 +64,9 @@ export function NotificationsCenter() {
   // 3. Templates State
   const [templates, setTemplates] = useState<Record<string, { title: string; body: string; channels: NotificationChannel[] }>>(DEFAULT_TEMPLATES);
   const [selectedEventKey, setSelectedEventKey] = useState<string>('rent_reminder');
-  const [editingTitle, setEditingTitle] = useState('');
-  const [editingBody, setEditingBody] = useState('');
-  const [previewVars, setPreviewVars] = useState({
+  const [editingTitle, setEditingTitle] = useState(() => DEFAULT_TEMPLATES.rent_reminder.title);
+  const [editingBody, setEditingBody] = useState(() => DEFAULT_TEMPLATES.rent_reminder.body);
+  const [previewVars] = useState({
     destinataire: 'Jean Mukendi',
     montant: '350',
     logement: 'Appartement B2 - Résidence La Plage',
@@ -126,7 +115,7 @@ export function NotificationsCenter() {
     // Load In-App Notifications
     const qNotifs = query(collection(db, 'notifications'), where('userId', '==', uid));
     const unsubNotifs = onSnapshot(qNotifs, (snap) => {
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setInAppNotifs(items);
       setLoading(false);
@@ -165,20 +154,21 @@ export function NotificationsCenter() {
     };
   }, []);
 
-  // Sync template inputs on selection change
-  useEffect(() => {
-    const t = templates[selectedEventKey] || DEFAULT_TEMPLATES[selectedEventKey as NotificationEvent];
+  // Select template event key
+  const handleSelectEventKey = (eventKey: string) => {
+    setSelectedEventKey(eventKey);
+    const t = templates[eventKey] || DEFAULT_TEMPLATES[eventKey as NotificationEvent];
     if (t) {
       setEditingTitle(t.title);
       setEditingBody(t.body);
     }
-  }, [selectedEventKey, templates]);
+  };
 
   // Mark in-app notification as read
   const handleMarkAsRead = async (id: string, isRead = true) => {
     try {
       await updateDoc(doc(db, 'notifications', id), { isRead });
-    } catch (err: any) {
+    } catch {
       toast.error("Erreur de mise à jour");
     }
   };
@@ -188,7 +178,7 @@ export function NotificationsCenter() {
     try {
       await updateDoc(doc(db, 'notifications', id), { isArchived });
       toast.success(isArchived ? "Notification archivée" : "Notification désarchivée");
-    } catch (err: any) {
+    } catch {
       toast.error("Erreur");
     }
   };
@@ -199,7 +189,7 @@ export function NotificationsCenter() {
     try {
       await deleteDoc(doc(db, 'notifications', id));
       toast.success("Notification supprimée");
-    } catch (err: any) {
+    } catch {
       toast.error("Erreur de suppression");
     }
   };
@@ -210,7 +200,7 @@ export function NotificationsCenter() {
     try {
       await Promise.all(unread.map(n => updateDoc(doc(db, 'notifications', n.id), { isRead: true })));
       toast.success("Toutes les notifications marquées comme lues.");
-    } catch (err: any) {
+    } catch {
       toast.error("Erreur");
     }
   };
@@ -488,7 +478,12 @@ export function NotificationsCenter() {
 
           {/* List of In-App notifications */}
           <div className="space-y-2.5">
-            {filteredInApp.length === 0 ? (
+            {loading && inAppNotifs.length === 0 ? (
+              <div className="p-12 text-center text-gray-400">
+                <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p className="text-xs">Chargement des notifications...</p>
+              </div>
+            ) : filteredInApp.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-3xl p-12 text-center border border-gray-100 dark:border-gray-700 shadow-xs space-y-2">
                 <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center mx-auto text-gray-400">
                   <Bell className="w-6 h-6" />
@@ -638,7 +633,6 @@ export function NotificationsCenter() {
                 </div>
               ) : (
                 filteredLogs.map(log => {
-                  const isSuccess = log.status === 'delivered' || log.status === 'sent';
                   const isFailed = log.status === 'failed';
 
                   return (
@@ -736,7 +730,7 @@ export function NotificationsCenter() {
               return (
                 <button
                   key={eventKey}
-                  onClick={() => setSelectedEventKey(eventKey)}
+                  onClick={() => handleSelectEventKey(eventKey)}
                   className={`w-full text-left p-3 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
                     isSelected
                       ? 'bg-indigo-600 text-white shadow-xs'

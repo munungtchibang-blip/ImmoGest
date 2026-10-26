@@ -88,13 +88,31 @@ service cloud.firestore {
     }
 
     function isValidPayment(data) {
-      return hasOnlyAllowedFields(['landlordId', 'tenantId', 'amount', 'date', 'method', 'type', 'notes', 'createdAt', 'proofUrl', 'status', 'monthKey', 'confirmedAt', 'confirmedBy']) &&
+      return hasOnlyAllowedFields([
+        'landlordId', 'tenantId', 'amount', 'date', 'method', 'type', 'notes', 
+        'createdAt', 'proofUrl', 'status', 'monthKey', 'confirmedAt', 'confirmedBy',
+        'currency', 'exchangeRate', 'amountUSD', 'amountCDF', 'paymentTypeCategory',
+        'isAdjustment', 'parentPaymentId', 'cancellationReason', 'mobileMoneyProvider',
+        'transactionRef', 'reconciled', 'reconciledAt', 'reconciliationNotes',
+        'receiptNumber', 'isAdvance', 'isGuarantee'
+      ]) &&
              isValidString(data.landlordId, 1, 100) &&
              isValidString(data.tenantId, 1, 100) &&
              isValidString(data.method, 1, 100) &&
              (data.amount is number) &&
              isValidDateString(data.date) &&
              data.type in ["Loyer", "Garantie", "Eau", "Électricité", "Avance", "Électricité / Lumière", "Frais syndics", "Internet / Networks", "Ventilation / Climatisation", "Plomberies", "Canalisation", "Dépenses / Réparations", "Frais de travaux", "Autre"] &&
+             (!('currency' in data) || data.currency in ["USD", "CDF"]) &&
+             (!('exchangeRate' in data) || isPositiveNumber(data.exchangeRate)) &&
+             (!('amountUSD' in data) || (data.amountUSD is number)) &&
+             (!('amountCDF' in data) || (data.amountCDF is number)) &&
+             (!('isAdjustment' in data) || data.isAdjustment is bool) &&
+             (!('parentPaymentId' in data) || isValidOptionalString(data.parentPaymentId, 0, 100)) &&
+             (!('cancellationReason' in data) || isValidOptionalString(data.cancellationReason, 0, 1000)) &&
+             (!('mobileMoneyProvider' in data) || isValidOptionalString(data.mobileMoneyProvider, 0, 50)) &&
+             (!('transactionRef' in data) || isValidOptionalString(data.transactionRef, 0, 100)) &&
+             (!('reconciled' in data) || data.reconciled is bool) &&
+             (!('reconciledAt' in data) || isValidOptionalString(data.reconciledAt, 0, 50)) &&
              (!('notes' in data) || isValidOptionalString(data.notes, 0, 1000)) &&
              (!('proofUrl' in data) || isValidOptionalString(data.proofUrl, 0, 2000000)) &&
              (!('status' in data) || isValidOptionalString(data.status, 0, 50)) &&
@@ -319,6 +337,42 @@ service cloud.firestore {
 
     match /notification_templates/{templateId} {
       allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /preventive_maintenance/{pmId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /budgets/{budgetId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /technicians/{technicianId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /financial_reports/{reportId} {
+      allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }

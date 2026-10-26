@@ -7,13 +7,15 @@ import {
   ArrowLeft, 
   Trash2, 
   UserCheck, 
-  Check, 
-  ChevronRight
+  Check 
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
+
+import { PreventiveMaintenanceManager } from '../components/PreventiveMaintenanceManager';
+import { TechnicianManager } from '../components/TechnicianManager';
 
 export function Maintenance() {
   const [issues, setIssues] = useState<any[]>([]);
@@ -22,6 +24,7 @@ export function Maintenance() {
   const [respondingToIssue, setRespondingToIssue] = useState<any>(null);
   const [issueToDelete, setIssueToDelete] = useState<string | null>(null);
   const [showPhoto, setShowPhoto] = useState<string | null>(null);
+  const [mainTab, setMainTab] = useState<'issues' | 'preventive' | 'technicians'>('issues');
   const [filterTab, setFilterTab] = useState<'all' | 'pending' | 'in_progress' | 'done'>('all');
 
   useEffect(() => {
@@ -107,50 +110,84 @@ export function Maintenance() {
         <Link to="/" className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl shadow-xs border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-all group font-medium text-xs sm:text-sm">
           <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" /> Retour au tableau de bord
         </Link>
+      </div>
 
-        {/* Link to Technician Portal for Landlord inspection */}
-        <Link
-          to="/tech"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+      {/* Main Section Navigation */}
+      <div className="flex overflow-x-auto gap-2 border-b border-gray-200 dark:border-gray-700 pb-3 scrollbar-none">
+        <button
+          onClick={() => setMainTab('issues')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+            mainTab === 'issues'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
         >
-          <Wrench className="w-3.5 h-3.5" />
-          <span>Ouvrir l'Espace Technicien Pro</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </Link>
+          <Wrench className="w-4 h-4" />
+          <span>Interventions & Dépannages</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">{issues.length}</span>
+        </button>
+
+        <button
+          onClick={() => setMainTab('preventive')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+            mainTab === 'preventive'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Maintenance Préventive</span>
+        </button>
+
+        <button
+          onClick={() => setMainTab('technicians')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+            mainTab === 'technicians'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <span>Prestataires & Techniciens</span>
+        </button>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 dark:text-white transition-colors">
-            Signalements & Interventions Techniques
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 text-xs sm:text-sm mt-0.5">
-            Gérez les pannes, attribuez des techniciens de maintenance et validez les rapports de travaux.
-          </p>
-        </div>
+      {mainTab === 'preventive' ? (
+        <PreventiveMaintenanceManager />
+      ) : mainTab === 'technicians' ? (
+        <TechnicianManager />
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white transition-colors">
+                Signalements & Interventions Techniques
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 text-xs mt-0.5">
+                Gérez les pannes, attribuez des techniciens de maintenance et validez les rapports de travaux.
+              </p>
+            </div>
 
-        {/* Tab Filters */}
-        <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
-          {[
-            { id: 'all', label: `Tous (${issues.length})` },
-            { id: 'pending', label: 'En attente' },
-            { id: 'in_progress', label: 'En cours' },
-            { id: 'done', label: 'Terminés' },
-          ].map((tab: any) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilterTab(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                filterTab === tab.id
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-xs'
-                  : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+            {/* Tab Filters */}
+            <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+              {[
+                { id: 'all', label: `Tous (${issues.length})` },
+                { id: 'pending', label: 'En attente' },
+                { id: 'in_progress', label: 'En cours' },
+                { id: 'done', label: 'Terminés' },
+              ].map((tab: any) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilterTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    filterTab === tab.id
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-xs'
+                      : 'text-gray-500 hover:text-gray-900 dark:text-gray-400'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
       {loading ? (
         <div className="animate-pulse space-y-3">
@@ -293,6 +330,8 @@ export function Maintenance() {
             })
           )}
         </div>
+      )}
+      </>
       )}
 
       {/* Confirmation modal delete */}
