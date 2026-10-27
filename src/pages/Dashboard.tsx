@@ -279,8 +279,8 @@ export function Dashboard() {
     });
   }, [payments]);
 
-  // Is Pro subscription recommended?
-  const isProRecommended = (tenants.length >= 2 || properties.length >= 2) && subscription.tierId !== 'pro' && subscription.tierId !== 'vip';
+  // Is Pro subscription recommended? (Recommended as soon as 1 property is registered)
+  const isProRecommended = (tenants.length >= 2 || properties.length >= 1) && subscription.tierId !== 'pro' && subscription.tierId !== 'vip';
   const netRevenue = stats.monthlyRevenue - stats.monthlyExpenses;
   const collectionRate = expectedRevenue > 0 ? Math.min(100, Math.round((stats.monthlyRevenue / expectedRevenue) * 100)) : 100;
   const totalUnits = properties.reduce((acc, p) => acc + (p.apartmentsCount || p.levels || 1), 0);

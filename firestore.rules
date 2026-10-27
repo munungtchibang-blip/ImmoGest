@@ -376,5 +376,11 @@ service cloud.firestore {
       allow create, update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
+
+    match /termination_procedures/{procedureId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAuthenticated();
+    }
   }
 }

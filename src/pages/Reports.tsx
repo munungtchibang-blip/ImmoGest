@@ -6,7 +6,8 @@ import {
   TrendingUp, 
   TrendingDown, 
   FileSpreadsheet,
-  History
+  History,
+  Sparkles
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -14,8 +15,10 @@ import { format, subMonths, startOfMonth, endOfMonth, differenceInDays } from 'd
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { calculateTenantFinancials } from '../services/financialEngine';
+import { useSubscription } from '../context/SubscriptionContext';
 
 export function Reports() {
+  const { subscription, openSubscriptionModal } = useSubscription();
   const [loading, setLoading] = useState(false);
   const [properties, setProperties] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
@@ -456,7 +459,7 @@ export function Reports() {
         <div className="flex items-center gap-2">
           <button
             onClick={exportToExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
             title="Exporter vers Microsoft Excel (format CSV UTF-8 sécurisé)"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -466,7 +469,7 @@ export function Reports() {
           <button
             onClick={exportToPDF}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
             title="Générer le rapport PDF avec graphiques et tableaux"
           >
             <Download className="w-4 h-4" />
@@ -474,6 +477,38 @@ export function Reports() {
           </button>
         </div>
       </div>
+
+      {/* PRO RECOMMENDATION BANNER FOR REPORTS */}
+      {subscription.tierId !== 'pro' && subscription.tierId !== 'vip' && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 text-white shadow-md border border-indigo-800/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-300 flex items-center justify-center shrink-0 border border-amber-400/30">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-400 text-gray-950">
+                  Recommandation Forfait Pro
+                </span>
+                <span className="text-xs text-indigo-200">Audit & Grand Livre Comptable</span>
+              </div>
+              <p className="text-sm font-bold text-white">
+                Rapports Financiers & Fiscaux Certifiés avec le Forfait Pro
+              </p>
+              <p className="text-xs text-indigo-100/80 max-w-xl">
+                Accédez à l'historique complet sans limite, aux ventilations multi-devises (USD / CDF) certifiées et au grand livre téléchargeable pour votre déclaration fiscale.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => openSubscriptionModal('pro')}
+            className="py-2.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer shrink-0"
+          >
+            Débloquer Forfait Pro (25 $/mois)
+          </button>
+        </div>
+      )}
 
       {/* Period frequency buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-xs">

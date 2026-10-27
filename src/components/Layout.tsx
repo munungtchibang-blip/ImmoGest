@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio, FileCheck2 } from 'lucide-react';
 import { logout, db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
 import { cn } from '../lib/utils';
@@ -116,6 +116,7 @@ export function Layout() {
     { to: '/expenses', icon: Receipt, label: t('Expenses') },
     { to: '/maintenance', icon: Wrench, label: t('Maintenance') },
     { to: '/contracts', icon: FileSignature, label: t('Contracts', 'Contrats') },
+    { to: '/terminations', icon: FileCheck2, label: 'Préavis & Clôtures' },
     { to: '/radar', icon: Radio, label: 'Radar', badge: radarCount, badgeColor: 'bg-cyan-500' },
     { to: '/notifications', icon: Bell, label: 'Notifications', badge: unreadNotifCount, badgeColor: 'bg-amber-500' },
     { to: '/reports', icon: FileText, label: t('Reports') },

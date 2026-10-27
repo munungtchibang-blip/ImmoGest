@@ -31,10 +31,17 @@ import {
   Layers,
   Bell,
   FileSignature,
-  ExternalLink
+  ExternalLink,
+  FileCheck2
 } from 'lucide-react';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { PhotoModal } from '../components/PhotoModal';
+import { 
+  generateNoticeLetterPDF, 
+  generateClosureInventoryPDF, 
+  calculateNoticeEndDate,
+  TerminationProcedure 
+} from '../services/terminationEngine';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import toast from 'react-hot-toast';
@@ -310,6 +317,13 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const [manualCode, setManualCode] = useState('');
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
 
+  // Termination & Notice Procedures State
+  const [terminationProcedures, setTerminationProcedures] = useState<TerminationProcedure[]>([]);
+  const [showNoticeModal, setShowNoticeModal] = useState(false);
+  const [noticeReason, setNoticeReason] = useState('Déménagement pour raisons personnelles');
+  const [noticeDurationMonths, setNoticeDurationMonths] = useState(3);
+  const [submittingNotice, setSubmittingNotice] = useState(false);
+
   // Fetch tenant doc and listen to collections
   useEffect(() => {
     if (!tenantId) return;
@@ -411,6 +425,15 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
           setNotifications(nData);
         }, (err) => { console.warn("Notifications listener error", err); });
 
+        // Realtime termination procedures listener (Préavis & Clôture)
+        const qTerm = query(collection(db, 'termination_procedures'), where('tenantId', '==', tenantId));
+        const unsubTerm = onSnapshot(qTerm, (termSnap) => {
+          if (!isMounted) return;
+          const termData = termSnap.docs.map(d => ({ id: d.id, ...d.data() } as TerminationProcedure));
+          termData.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+          setTerminationProcedures(termData);
+        }, (err) => { console.warn("Termination procedures listener error", err); });
+
         // Fetch contract
         const qContract = query(collection(db, 'contracts'), where('tenantId', '==', tenantId));
         getDocs(qContract).then(cSnap => {
@@ -426,6 +449,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
           unsubMaint();
           unsubExp();
           unsubNotifs();
+          unsubTerm();
         };
 
       } catch (err: any) {
@@ -502,12 +526,12 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
     const curYear = dToday.getFullYear();
     const curMonth = dToday.getMonth();
     return payments.some(p => {
-      if (p.status === 'Rejeté') return false;
+      if (p.status === 'Rejeté' || p.status === 'Échoué' || p.status === 'Contesté') return false;
       const pDate = new Date(p.date);
       return (
         pDate.getFullYear() === curYear &&
         pDate.getMonth() === curMonth &&
-        (p.type === typeToCheck || (typeToCheck === 'Tous les frais du mois' && p.type === 'Loyer'))
+        (p.type === typeToCheck || (typeToCheck === 'Tous les frais du mois' && p.type === 'Loyer') || (typeToCheck === 'Loyer' && p.type === 'Tous les frais du mois'))
       );
     });
   };
@@ -547,7 +571,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
 
     const numAmount = Number(paymentAmount);
     if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
-      alert("Le montant de paiement est invalide ou égal à zéro.");
+      alert("Le montant du versement doit être un nombre strictement supérieur à 0 $ USD.");
       return;
     }
 
@@ -588,42 +612,55 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
         tenantId: tenant.id,
         landlordId: tenant.landlordId,
         createdAt: now,
-        status: paymentMethod === 'Preuve Photo' ? 'En attente' : 'Validé'
+        // Rule: All tenant submissions start in 'En attente' pending landlord confirmation
+        status: 'En attente'
       };
 
       if (paymentMethod === 'Mobile Money') {
         paymentRecord.method = `Mobile Money (${paymentProvider || 'M-Pesa'})`;
-        paymentRecord.notes = `Paiement Mobile Money automatique. Compte : ***${accountNumber ? accountNumber.slice(-4) : 'Direct'}`;
+        paymentRecord.notes = `Déclaration Mobile Money. Compte : ***${accountNumber ? accountNumber.slice(-4) : 'Direct'}`;
       } else if (paymentMethod === 'Carte Visa') {
         paymentRecord.method = `Carte Visa (${paymentProvider || 'Visa'})`;
-        paymentRecord.notes = `Règlement par Carte Bancaire Visa. Carte : **** ${accountNumber ? accountNumber.slice(-4) : 'Visa'}`;
+        paymentRecord.notes = `Déclaration Carte Bancaire Visa. Carte : **** ${accountNumber ? accountNumber.slice(-4) : 'Visa'}`;
       } else {
         paymentRecord.method = 'Capture / Preuve Reçu';
         paymentRecord.notes = proofNote || 'Preuve de virement / reçu transmis par le locataire.';
         paymentRecord.proofUrl = proofImage;
       }
 
-      // 1. If proof image was provided, also save to dedicated 'paymentProofs' collection
-      // so the landlord sees it immediately in TenantDetail.tsx
-      if (proofImage || paymentMethod === 'Preuve Photo') {
-        await addDoc(collection(db, 'paymentProofs'), {
-          amount: numAmount,
-          date: now,
-          type: paymentType,
-          monthKey,
-          method: paymentRecord.method,
-          notes: paymentRecord.notes,
-          proofUrl: proofImage,
-          tenantId: tenant.id,
-          tenantName: tenant.name,
-          landlordId: tenant.landlordId,
-          status: 'En attente',
-          createdAt: now
-        });
-      }
+      // 1. Add to payments first
+      const paymentRef = await addDoc(collection(db, 'payments'), paymentRecord);
 
-      // 2. Add to payments
-      await addDoc(collection(db, 'payments'), paymentRecord);
+      // 2. Also register in paymentProofs for landlord's review queue
+      await addDoc(collection(db, 'paymentProofs'), {
+        paymentId: paymentRef.id,
+        amount: numAmount,
+        date: now,
+        type: paymentType,
+        monthKey,
+        method: paymentRecord.method,
+        notes: paymentRecord.notes,
+        proofUrl: proofImage || '',
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        landlordId: tenant.landlordId,
+        status: 'En attente',
+        createdAt: now
+      });
+
+      // 3. Notify landlord
+      if (tenant.landlordId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: tenant.landlordId,
+          landlordId: tenant.landlordId,
+          tenantId: tenant.id,
+          type: 'payment',
+          title: `Paiement en attente de confirmation : ${tenant.name}`,
+          message: `Le locataire ${tenant.name} a déclaré un paiement de ${numAmount} $ pour ${paymentType} (${paymentRecord.method}). Veuillez vérifier et confirmer l'encaissement.`,
+          createdAt: now,
+          read: false
+        }).catch(console.warn);
+      }
 
       // Save preference
       try {
@@ -643,6 +680,87 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
       setPaymentStep(4);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Submit Departure Notice (Loi n° 15/025 RDC)
+  const handleSubmitNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenant) return;
+    setSubmittingNotice(true);
+    try {
+      const now = new Date().toISOString();
+      const confirmedEnd = calculateNoticeEndDate(now, noticeDurationMonths, true);
+      
+      const newProc: any = {
+        landlordId: tenant.landlordId,
+        tenantId: tenant.id,
+        contractId: contract?.id || '',
+        targetName: tenant.name,
+        targetAddressOrSpecialty: tenant.address || 'Logement',
+        targetPhone: tenant.phone || '',
+        targetEmail: tenant.email || '',
+        initiator: 'tenant',
+        procedureType: 'preavis_location',
+        reason: noticeReason,
+        legalBasis: 'Loi n° 15/025 du 31 décembre 2015 relative aux baux à loyer en RDC (Art. 18)',
+        notificationDate: now,
+        confirmedEndDate: confirmedEnd,
+        desiredEndDate: confirmedEnd,
+        noticeDurationMonths: Number(noticeDurationMonths) || 3,
+        status: 'Préavis en cours',
+        closureChecklist: {
+          rentPaidUpToDate: false,
+          chargesSettled: false,
+          inventoryExitDone: false,
+          keysReturned: false,
+          damagesIdentified: false,
+          damageCost: 0,
+          guaranteeAmount: Number(tenant.guaranteeAmount) || 0,
+          guaranteeReturned: 0,
+          hasReserves: false,
+          ongoingTasksTransferred: false,
+          invoicesPaid: false,
+          equipmentReturned: false,
+          accessRevoked: false
+        },
+        events: [
+          {
+            timestamp: now,
+            author: tenant.name,
+            role: 'tenant',
+            action: 'Dépôt formel du préavis de départ par le locataire',
+            details: `Préavis légal de ${noticeDurationMonths} mois déposé. Échéance calculée : ${new Date(confirmedEnd).toLocaleDateString('fr-FR')}. Motif : ${noticeReason}`
+          }
+        ],
+        comments: [],
+        createdAt: now,
+        updatedAt: now
+      };
+
+      await addDoc(collection(db, 'termination_procedures'), newProc);
+
+      // Notify landlord
+      if (tenant.landlordId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: tenant.landlordId,
+          landlordId: tenant.landlordId,
+          tenantId: tenant.id,
+          type: 'contract',
+          title: `Préavis de départ reçu : ${tenant.name}`,
+          message: `Le locataire ${tenant.name} a déposé un préavis de départ de ${noticeDurationMonths} mois (Échéance légale : ${new Date(confirmedEnd).toLocaleDateString('fr-FR')}). Motif : ${noticeReason}`,
+          createdAt: now,
+          read: false
+        }).catch(console.warn);
+      }
+
+      setShowNoticeModal(false);
+      toast.success("Votre préavis de départ a été transmis avec succès à votre bailleur.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors du dépôt du préavis.");
+    } finally {
+      setSubmittingNotice(false);
     }
   };
 
@@ -2020,6 +2138,257 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                   </a>
                 )}
               </div>
+            </div>
+
+            {/* SECTION: GESTION DES PRÉAVIS & FIN DE BAIL (LOI N° 15/025 RDC) */}
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+                    <FileCheck2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm sm:text-base text-gray-900">
+                      Préavis de Départ & Clôture de Bail
+                    </h3>
+                    <p className="text-[11px] text-gray-500">
+                      Conforme à la Loi n° 15/025 relative aux baux à loyer en RDC
+                    </p>
+                  </div>
+                </div>
+
+                {terminationProcedures.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowNoticeModal(true)}
+                    className="py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Déposer un préavis</span>
+                  </button>
+                )}
+              </div>
+
+              {terminationProcedures.length > 0 ? (
+                <div className="space-y-4">
+                  {terminationProcedures.map((proc) => {
+                    const isCompleted = proc.status === 'Terminé';
+                    const isClosed = proc.status === 'En cours de clôture' || isCompleted;
+                    return (
+                      <div key={proc.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-gray-900">
+                              Dossier #{proc.id.substring(0, 8).toUpperCase()}
+                            </span>
+                            <span className="text-[10px] text-gray-400">
+                              {proc.initiator === 'tenant' ? '(Initié par vous)' : '(Notifié par le bailleur)'}
+                            </span>
+                          </div>
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                            proc.status === 'Terminé' ? 'bg-emerald-100 text-emerald-800' :
+                            proc.status === 'En cours de clôture' ? 'bg-purple-100 text-purple-800' :
+                            proc.status === 'Accord amiable' ? 'bg-blue-100 text-blue-800' :
+                            proc.status === 'Contesté' ? 'bg-rose-100 text-rose-800' :
+                            'bg-amber-100 text-amber-800'
+                          }`}>
+                            {proc.status}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                          <div className="p-2.5 bg-white rounded-xl border border-gray-100">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Notification</span>
+                            <span className="font-bold text-gray-800">
+                              {proc.notificationDate ? new Date(proc.notificationDate).toLocaleDateString('fr-FR') : 'Date convenue'}
+                            </span>
+                          </div>
+                          <div className="p-2.5 bg-white rounded-xl border border-gray-100">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Fin de bail programmée</span>
+                            <span className="font-bold text-indigo-700">
+                              {proc.confirmedEndDate ? new Date(proc.confirmedEndDate).toLocaleDateString('fr-FR') : 'À convenir'}
+                            </span>
+                          </div>
+                          <div className="p-2.5 bg-white rounded-xl border border-gray-100">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block">Délai Légal</span>
+                            <span className="font-bold text-gray-800">
+                              {proc.noticeDurationMonths} mois (Art. 18)
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-white rounded-xl border border-gray-100 text-xs space-y-1">
+                          <p className="font-bold text-gray-700">Motif signifié :</p>
+                          <p className="text-gray-600 italic">"{proc.reason}"</p>
+                          <p className="text-[10px] text-gray-400 pt-1">
+                            Fondement : {proc.legalBasis}
+                          </p>
+                        </div>
+
+                        {/* Checklist d'état des lieux & obligations */}
+                        <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 text-xs space-y-2">
+                          <span className="font-bold text-indigo-950 block">Suivi des obligations de clôture :</span>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                            <div className="flex items-center gap-1.5">
+                              {proc.closureChecklist?.rentPaidUpToDate ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                              <span>Loyers soldés</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {proc.closureChecklist?.chargesSettled ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                              <span>Charges réglées</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {proc.closureChecklist?.inventoryExitDone ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                              <span>État des lieux sortie</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {proc.closureChecklist?.keysReturned ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                              <span>Clés restituées</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* PDF Downloads */}
+                        <div className="pt-1 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => generateNoticeLetterPDF(proc, adminPaymentConfig?.companyName || 'Le Bailleur')}
+                            className="py-2 px-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Lettre officielle de préavis (PDF)</span>
+                          </button>
+
+                          {(isClosed || proc.closureChecklist?.inventoryExitDone) && (
+                            <button
+                              type="button"
+                              onClick={() => generateClosureInventoryPDF(proc)}
+                              className="py-2 px-3 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PV de Clôture & Décompte Garantie (PDF)</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-100 text-xs text-amber-950 space-y-2">
+                  <p className="font-bold flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    Réglementation relative au départ du logement (RDC)
+                  </p>
+                  <p className="leading-relaxed text-amber-900">
+                    Conformément à la Loi n° 15/025, le délai de préavis pour un logement d'habitation est légalement fixé à <strong>3 mois</strong>. 
+                    Le préavis prend effet à compter du 1er jour du mois civil suivant sa notification formelle. 
+                    Si vous envisagez de quitter le logement, vous pouvez adresser votre notification directement ci-dessous.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowNoticeModal(true)}
+                    className="py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs shadow-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Déposer formellement un préavis de départ</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: FORMULAIRE DE PRÉAVIS DE DÉPART */}
+        {showNoticeModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 tab-enter">
+              <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                    <LogOut className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-gray-900">Dépôt de Préavis de Départ</h3>
+                    <p className="text-[10px] text-gray-500">Conforme à la Loi n° 15/025 RDC</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowNoticeModal(false)}
+                  className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitNotice} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Durée légale du préavis *
+                  </label>
+                  <select
+                    value={noticeDurationMonths}
+                    onChange={e => setNoticeDurationMonths(Number(e.target.value))}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none font-bold text-indigo-900"
+                  >
+                    <option value={3}>3 mois (Délai légal standard - Habitation)</option>
+                    <option value={2}>2 mois (Dérogation / Accord préalable)</option>
+                    <option value={1}>1 mois (Cas d'urgence ou accord écrit)</option>
+                    <option value={6}>6 mois (Bail commercial ou longue durée)</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-indigo-700 block">
+                    Calcul de l'échéance légale
+                  </span>
+                  <p className="font-extrabold text-indigo-950 text-sm">
+                    Date de fin de contrat : {new Date(calculateNoticeEndDate(new Date().toISOString(), noticeDurationMonths, true)).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                  </p>
+                  <p className="text-[10px] text-indigo-600">
+                    Prend effet le 1er du mois prochain et s'achève au dernier jour du {noticeDurationMonths}e mois.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Motif du préavis *
+                  </label>
+                  <select
+                    value={noticeReason}
+                    onChange={e => setNoticeReason(e.target.value)}
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none font-semibold text-gray-800"
+                  >
+                    <option value="Déménagement pour raisons personnelles">Déménagement pour raisons personnelles</option>
+                    <option value="Mutation ou réaffectation professionnelle">Mutation ou réaffectation professionnelle</option>
+                    <option value="Acquisition d'un logement personnel">Acquisition d'un logement personnel</option>
+                    <option value="Changement de situation familiale">Changement de situation familiale</option>
+                    <option value="Fin de mission professionnelle à Kinshasa">Fin de mission professionnelle à Kinshasa</option>
+                    <option value="Autre motif convenu">Autre motif convenu</option>
+                  </select>
+                </div>
+
+                <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-[11px] text-gray-600 leading-relaxed">
+                  En transmettant ce préavis, vous vous engagez à régler les loyers et charges d'ici l'échéance et à convenir d'un état des lieux de sortie contradictoire pour la restitution des clés et de la garantie locative.
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowNoticeModal(false)}
+                    className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingNotice}
+                    className="flex-1 py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl disabled:opacity-50 shadow-md cursor-pointer"
+                  >
+                    {submittingNotice ? 'Transmission...' : 'Confirmer & Transmettre'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

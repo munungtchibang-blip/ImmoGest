@@ -70,9 +70,34 @@ export function Tenants() {
       const maintSnap = await getDocs(qMaintenance);
       await Promise.all(maintSnap.docs.map(d => deleteDoc(doc(db, 'maintenance', d.id))));
 
-      // 3. Delete the tenant
+      // 3. Delete contracts
+      const qContracts = query(collection(db, 'contracts'), where('tenantId', '==', tenantToDelete));
+      const contractSnap = await getDocs(qContracts);
+      await Promise.all(contractSnap.docs.map(d => deleteDoc(doc(db, 'contracts', d.id))));
+
+      // 4. Delete expenses
+      const qExpenses = query(collection(db, 'expenses'), where('tenantId', '==', tenantToDelete));
+      const expSnap = await getDocs(qExpenses);
+      await Promise.all(expSnap.docs.map(d => deleteDoc(doc(db, 'expenses', d.id))));
+
+      // 5. Delete payment proofs
+      const qProofs = query(collection(db, 'paymentProofs'), where('tenantId', '==', tenantToDelete));
+      const proofSnap = await getDocs(qProofs);
+      await Promise.all(proofSnap.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
+
+      // 6. Delete termination procedures
+      const qTerm = query(collection(db, 'termination_procedures'), where('tenantId', '==', tenantToDelete));
+      const termSnap = await getDocs(qTerm);
+      await Promise.all(termSnap.docs.map(d => deleteDoc(doc(db, 'termination_procedures', d.id))));
+
+      // 7. Delete tenant user account in users collection
+      const qUsers = query(collection(db, 'users'), where('tenantId', '==', tenantToDelete));
+      const usersSnap = await getDocs(qUsers);
+      await Promise.all(usersSnap.docs.map(d => deleteDoc(doc(db, 'users', d.id))));
+
+      // 8. Delete the tenant record itself
       await deleteDoc(doc(db, 'tenants', tenantToDelete));
-      toast.success('Locataire supprimé avec succès');
+      toast.success('Locataire, compte utilisateur et données associés supprimés avec succès.');
       
       setTenantToDelete(null);
     } catch (error) {
@@ -361,11 +386,17 @@ function TenantAccessDispatchModal({ info, onClose }: { info: TenantDispatchInfo
   };
 
   const handleWhatsApp = () => {
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMessage)}`, '_blank');
+    const directUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappMessage)}`;
+    window.open(directUrl, '_blank');
   };
 
-  const handleEmail = () => {
-    window.open(`mailto:${info.email}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`, '_blank');
+  const handleGmail = () => {
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(info.email)}&su=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+    window.open(gmailUrl, '_blank');
+  };
+
+  const handleDefaultMail = () => {
+    window.location.href = `mailto:${info.email}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
   };
 
   return (
@@ -394,7 +425,7 @@ function TenantAccessDispatchModal({ info, onClose }: { info: TenantDispatchInfo
         <div className="my-4 p-3.5 bg-blue-50 dark:bg-blue-950/30 rounded-2xl border border-blue-200 dark:border-blue-900/50 text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2.5">
           <Lock className="w-4 h-4 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400" />
           <p>
-            <strong>Confidentialité garantie :</strong> Le bailleur ne dispose pas d'accès direct pour modifier les informations privées du locataire. Transmettez ce lien au locataire afin qu'il consulte son portail en toute autonomie.
+            <strong>Confidentialité garantie :</strong> Seul le locataire peut se connecter avec ce lien. Le bailleur ne peut pas accéder à l'espace locataire, et le locataire ne peut pas accéder à l'espace bailleur.
           </p>
         </div>
 
@@ -420,21 +451,30 @@ function TenantAccessDispatchModal({ info, onClose }: { info: TenantDispatchInfo
           {info.phone && (
             <button
               onClick={handleWhatsApp}
-              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all"
+              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer"
             >
               <MessageCircle className="w-4 h-4" />
-              <span>Transmettre sur WhatsApp ({info.phone})</span>
+              <span>Ouvrir WhatsApp directement ({info.phone})</span>
             </button>
           )}
 
           {info.email && (
-            <button
-              onClick={handleEmail}
-              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-xs transition-all"
-            >
-              <Mail className="w-4 h-4" />
-              <span>Transmettre par Email ({info.email})</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                onClick={handleGmail}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Ouvrir Gmail Web</span>
+              </button>
+              <button
+                onClick={handleDefaultMail}
+                className="flex items-center justify-center gap-2 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Application Mail</span>
+              </button>
+            </div>
           )}
 
           <button

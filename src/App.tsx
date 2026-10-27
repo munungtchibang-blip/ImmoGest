@@ -44,6 +44,7 @@ const Contracts = React.lazy(() => import('./pages/Contracts').then(m => ({ defa
 const TechnicianPortal = React.lazy(() => import('./pages/TechnicianPortal').then(m => ({ default: m.TechnicianPortal })));
 const Radar = React.lazy(() => import('./pages/Radar').then(m => ({ default: m.Radar })));
 const NotificationsCenter = React.lazy(() => import('./pages/NotificationsCenter').then(m => ({ default: m.NotificationsCenter })));
+const NoticeAndTermination = React.lazy(() => import('./pages/NoticeAndTermination').then(m => ({ default: m.NoticeAndTermination })));
 
 function RouteLoadingFallback() {
   return (
@@ -538,6 +539,29 @@ export default function App() {
 
 
 
+  // Check if current browser path is a dedicated public portal (Locataire or Technicien)
+  const isDirectPortalRoute = 
+    window.location.pathname.startsWith('/pay') || 
+    window.location.pathname.startsWith('/tech');
+
+  if (isDirectPortalRoute) {
+    return (
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Toaster />
+          <React.Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+              <Route path="/pay/:id" element={<PublicPay />} />
+              <Route path="/pay" element={<PublicPay />} />
+              <Route path="/tech" element={<TechnicianPortal onSwitchRole={() => setRole('landlord')} />} />
+              <Route path="*" element={<Navigate to="/tech" replace />} />
+            </Routes>
+          </React.Suspense>
+        </BrowserRouter>
+      </ErrorBoundary>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 transition-colors">
@@ -617,6 +641,7 @@ export default function App() {
                 <Route path="expenses" element={<Expenses />} />
                 <Route path="maintenance" element={<Maintenance />} />
                 <Route path="contracts" element={<Contracts />} />
+                <Route path="terminations" element={<NoticeAndTermination />} />
                 <Route path="radar" element={<Radar />} />
                 <Route path="notifications" element={<NotificationsCenter />} />
                 <Route path="reports" element={<Reports />} />

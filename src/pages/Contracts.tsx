@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
+import { Link } from 'react-router-dom';
 import { 
   Plus, 
   Search, 
@@ -11,7 +12,8 @@ import {
   Sparkles, 
   X,
   Building2, 
-  ChevronRight
+  ChevronRight,
+  FileCheck2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
@@ -342,13 +344,23 @@ export function Contracts() {
           </p>
         </div>
 
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md self-start sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Nouveau Contrat
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            to="/terminations"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 rounded-xl text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800 shadow-xs"
+          >
+            <FileCheck2 className="w-4 h-4" />
+            <span>Préavis & Résiliations</span>
+          </Link>
+
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-md cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Nouveau Contrat</span>
+          </button>
+        </div>
       </div>
 
       {/* PRO SUBSCRIPTION RECOMMENDATION BANNER FOR CONTRACTS (Requested by User) */}
@@ -523,6 +535,14 @@ export function Contracts() {
                 </button>
 
                 <div className="flex items-center gap-1.5">
+                  <Link
+                    to="/terminations"
+                    className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-lg transition-colors cursor-pointer"
+                    title="Gérer le préavis ou la résiliation"
+                  >
+                    <FileCheck2 className="w-4 h-4" />
+                  </Link>
+
                   <button
                     onClick={() => generateContractPDF(contract)}
                     className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors cursor-pointer"

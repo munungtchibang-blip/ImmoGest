@@ -29,6 +29,7 @@ interface TechnicianPortalProps {
 export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
   const [activeTab, setActiveTab] = useState<'tasks' | 'history' | 'calendar' | 'account'>('tasks');
   const [interventions, setInterventions] = useState<any[]>([]);
+  const [techProcedures, setTechProcedures] = useState<any[]>([]);
   const currentUser = auth.currentUser;
 
   // Independent technician session
@@ -127,7 +128,23 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
       setLoading(false);
     });
 
-    return () => unsub();
+    const qProc = query(collection(db, 'termination_procedures'));
+    const unsubProc = onSnapshot(qProc, (pSnap) => {
+      const allProc = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const matching = allProc.filter((p: any) => 
+        (effectiveId && p.technicianId === effectiveId) ||
+        (effectiveName && p.targetName?.toLowerCase() === effectiveName?.toLowerCase()) ||
+        (effectivePhone && p.targetPhone === effectivePhone)
+      );
+      setTechProcedures(matching);
+    }, (err) => {
+      console.warn("Erreur chargement procédures technicien:", err);
+    });
+
+    return () => {
+      unsub();
+      unsubProc();
+    };
   }, [currentUser, techSession]);
 
   const toggleDarkMode = () => {
@@ -480,6 +497,44 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
         {/* ======================================================== */}
         {activeTab === 'tasks' && (
           <div className="space-y-6 tab-enter">
+
+            {/* Active Contract Termination / Handover Card */}
+            {techProcedures.length > 0 && (
+              <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-500/30 rounded-3xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileCheck2 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    <span className="font-extrabold text-sm text-gray-900 dark:text-white">
+                      Procédure de fin de contrat de prestation
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200">
+                    {techProcedures[0].status}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-300">
+                  Échéance de fin de mission : <strong>{techProcedures[0].confirmedEndDate ? new Date(techProcedures[0].confirmedEndDate).toLocaleDateString('fr-FR') : 'À convenir'}</strong>. Motif : {techProcedures[0].reason}
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] pt-1">
+                  <div className="p-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center gap-1.5">
+                    {techProcedures[0].closureChecklist?.ongoingTasksTransferred ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                    <span>Tâches transférées</span>
+                  </div>
+                  <div className="p-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center gap-1.5">
+                    {techProcedures[0].closureChecklist?.invoicesPaid ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                    <span>Factures réglées</span>
+                  </div>
+                  <div className="p-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center gap-1.5">
+                    {techProcedures[0].closureChecklist?.equipmentReturned ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                    <span>Outils restitués</span>
+                  </div>
+                  <div className="p-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center gap-1.5">
+                    {techProcedures[0].closureChecklist?.accessRevoked ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Clock className="w-3.5 h-3.5 text-amber-500" />}
+                    <span>Accès révoqué</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Quick Metrics Bar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

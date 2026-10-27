@@ -17,7 +17,11 @@ import {
   ChevronRight, 
   CheckCircle2, 
   Image as ImageIcon, 
-  FileCheck
+  FileCheck,
+  Smartphone,
+  MessageSquare,
+  Copy,
+  Send
 } from 'lucide-react';
 import { format, intervalToDuration } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -186,6 +190,10 @@ export function TenantDetail() {
       const proofSnap = await getDocs(qProofs);
       await Promise.all(proofSnap.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
 
+      const qTerm = query(collection(db, 'termination_procedures'), where('tenantId', '==', id));
+      const termSnap = await getDocs(qTerm);
+      await Promise.all(termSnap.docs.map(d => deleteDoc(doc(db, 'termination_procedures', d.id))));
+
       const qUsers = query(collection(db, 'users'), where('tenantId', '==', id));
       const usersSnap = await getDocs(qUsers);
       await Promise.all(usersSnap.docs.map(d => deleteDoc(doc(db, 'users', d.id))));
@@ -203,46 +211,95 @@ export function TenantDetail() {
     if (!tenant) return;
     try {
       const currentMonthKey = proof.monthKey || `${new Date(proof.date).getFullYear()}-${new Date(proof.date).getMonth() + 1}-${proof.type}`;
-      
-      // Check duplicate payment
-      const existingPayment = payments.find(p => 
-        p.monthKey === currentMonthKey || 
-        (p.type === proof.type && new Date(p.date).getMonth() === new Date(proof.date).getMonth() && new Date(p.date).getFullYear() === new Date(proof.date).getFullYear())
-      );
+      const now = new Date().toISOString();
 
-      if (existingPayment) {
-        const proceed = window.confirm(`Attention : Un paiement de ${existingPayment.amount} $ est déjà enregistré pour ce mois (${proof.type}). Voulez-vous tout de même enregistrer ce paiement en double ?`);
-        if (!proceed) return;
+      if (proof.paymentId) {
+        // Direct update to existing payment to avoid any duplication
+        await updateDoc(doc(db, 'payments', proof.paymentId), {
+          status: 'Confirmé',
+          confirmedAt: now,
+          confirmedBy: auth.currentUser?.uid || 'bailleur'
+        });
+      } else {
+        // Look for existing pending payment with same monthKey or date/type
+        const existingPending = payments.find(p => 
+          (p.monthKey === currentMonthKey || (p.type === proof.type && new Date(p.date).getMonth() === new Date(proof.date).getMonth() && new Date(p.date).getFullYear() === new Date(proof.date).getFullYear())) &&
+          p.status === 'En attente'
+        );
+
+        if (existingPending) {
+          await updateDoc(doc(db, 'payments', existingPending.id), {
+            status: 'Confirmé',
+            confirmedAt: now,
+            confirmedBy: auth.currentUser?.uid || 'bailleur'
+          });
+        } else {
+          // Check if already confirmed
+          const existingConfirmed = payments.find(p => 
+            (p.monthKey === currentMonthKey || (p.type === proof.type && new Date(p.date).getMonth() === new Date(proof.date).getMonth() && new Date(p.date).getFullYear() === new Date(proof.date).getFullYear())) &&
+            p.status === 'Confirmé'
+          );
+
+          if (existingConfirmed) {
+            const proceed = window.confirm(`Attention : Un paiement validé de ${existingConfirmed.amount} $ est déjà enregistré pour ce mois (${proof.type}). Souhaitez-vous quand même enregistrer cette nouvelle somme ?`);
+            if (!proceed) return;
+          }
+
+          const paymentData = {
+            amount: Number(proof.amount),
+            date: proof.date || now,
+            method: proof.method || 'Capture / Mobile Money',
+            type: proof.type || 'Loyer',
+            notes: `Validé d'après déclaration du locataire. ${proof.notes || ''}`.trim(),
+            proofUrl: proof.proofUrl || '',
+            status: 'Confirmé',
+            monthKey: currentMonthKey,
+            confirmedAt: now,
+            confirmedBy: auth.currentUser?.uid || 'bailleur',
+            tenantId: tenant.id,
+            landlordId: auth.currentUser?.uid || tenant.landlordId,
+            createdAt: now
+          };
+
+          await addDoc(collection(db, 'payments'), paymentData);
+        }
       }
 
-      const now = new Date().toISOString();
-      const paymentData = {
-        amount: Number(proof.amount),
-        date: proof.date || now,
-        method: proof.method || 'Capture / Mobile Money',
-        type: proof.type || 'Loyer',
-        notes: `Validé d'après capture de preuve du locataire. ${proof.notes || ''}`.trim(),
-        proofUrl: proof.proofUrl || '',
-        status: 'Confirmé',
-        monthKey: currentMonthKey,
-        confirmedAt: now,
-        confirmedBy: auth.currentUser?.uid || 'bailleur',
-        tenantId: tenant.id,
-        landlordId: auth.currentUser?.uid || tenant.landlordId,
-        createdAt: now
-      };
-
-      await addDoc(collection(db, 'payments'), paymentData);
       await updateDoc(doc(db, 'paymentProofs', proof.id), {
         status: 'Confirmé',
         confirmedAt: now,
         confirmedBy: auth.currentUser?.uid || 'bailleur'
       });
 
-      toast.success("Paiement validé avec succès ! Quittance enregistrée.");
+      toast.success("Paiement validé avec succès ! Quittance confirmée.");
     } catch (e) {
       console.error(e);
       toast.error("Erreur lors de la validation de la preuve.");
+    }
+  };
+
+  const handleValidatePayment = async (paymentId: string) => {
+    try {
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, 'payments', paymentId), {
+        status: 'Confirmé',
+        confirmedAt: now,
+        confirmedBy: auth.currentUser?.uid || 'bailleur'
+      });
+
+      const matchingProof = proofs.find(p => p.paymentId === paymentId);
+      if (matchingProof) {
+        await updateDoc(doc(db, 'paymentProofs', matchingProof.id), {
+          status: 'Confirmé',
+          confirmedAt: now,
+          confirmedBy: auth.currentUser?.uid || 'bailleur'
+        });
+      }
+
+      toast.success("Paiement confirmé avec succès !");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors de la validation du paiement.");
     }
   };
 
@@ -650,10 +707,23 @@ export function TenantDetail() {
                     <CreditCard className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                       {payment.type} - {payment.method}
-                       <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                        {payment.type} - {payment.method}
+                        <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      </p>
+                      {payment.status && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          payment.status === 'Confirmé' || payment.status === 'Validé' 
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' 
+                            : payment.status === 'Rejeté'
+                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                        }`}>
+                          {payment.status}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400">{format(new Date(payment.date), 'dd MMMM yyyy', { locale: fr })}</p>
                     {payment.notes && !isExpanded && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 italic truncate max-w-xs sm:max-w-md">"{payment.notes}"</p>}
                   </div>
@@ -664,6 +734,16 @@ export function TenantDetail() {
                   </p>
                   {!payment.isExpense && (
                     <>
+                      {payment.status === 'En attente' && (
+                        <button
+                          onClick={() => handleValidatePayment(payment.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
+                          title="Valider et confirmer la réception des fonds"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Valider</span>
+                        </button>
+                      )}
                       <button 
                         onClick={() => setEditingPayment(payment)}
                         className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -761,15 +841,22 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
   const baseUrl = window.location.origin;
   const paymentUrl = `${baseUrl}/pay/${tenant.id}`;
 
+  const cleanPhone = tenant.phone ? tenant.phone.replace(/[^0-9]/g, '') : '';
+  const shareMessage = `Bonjour ${tenant.name},\nVoici le lien sécurisé vers votre espace locataire personnel sur ImmoGest :\n${paymentUrl}\nVous pouvez y régler votre loyer en ligne, télécharger vos quittances officielles, suivre votre contrat et vos signalements.`;
+
+  const whatsappDirectUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(shareMessage)}`;
+  const gmailDirectUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(tenant.email || '')}&su=${encodeURIComponent("Votre Espace Locataire Sécurisé - ImmoGest")}&body=${encodeURIComponent(shareMessage)}`;
+
   const copyLink = () => {
     navigator.clipboard.writeText(paymentUrl);
     setCopied(true);
+    toast.success("Lien de l'espace locataire copié !");
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-8 text-center transition-colors relative">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 transition-colors relative tab-enter space-y-4">
         <button 
           onClick={onClose}
           className="absolute top-4 left-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
@@ -777,35 +864,68 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
           <ArrowLeft className="w-5 h-5" />
         </button>
 
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2 mt-4">Espace Locataire</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">Partagez ce lien avec votre locataire pour qu'il puisse payer son loyer ou signaler un problème.</p>
-        
-        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 rounded-lg mb-6 break-all">
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 select-all">{paymentUrl}</p>
+        <div className="text-center pt-2">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-2">
+            <Smartphone className="w-6 h-6" />
+          </div>
+          <h2 className="text-lg font-black text-gray-900 dark:text-white">Partage Espace Locataire</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Destiné à {tenant.name}</p>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <button 
+        {/* Strict Role Separation Notice */}
+        <div className="p-3 bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl text-[11px] text-amber-900 dark:text-amber-200 leading-relaxed">
+          <strong>Règle de séparation des rôles :</strong> Ce lien est strictement réservé au locataire. En tant que bailleur, vous ne devez pas vous connecter avec ce lien. Vos validations s'effectuent depuis votre tableau de bord bailleur.
+        </div>
+
+        {/* Link Box */}
+        <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-3 rounded-xl break-all flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 truncate select-all">{paymentUrl}</p>
+          <button
             onClick={copyLink}
-            className="w-full py-2.5 px-4 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+            className="p-1.5 text-gray-500 hover:text-indigo-600 dark:text-gray-400 shrink-0"
+            title="Copier le lien"
           >
-            {copied ? 'Lien copié !' : 'Copier le lien'}
-          </button>
-          <a
-            href={paymentUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-2.5 px-4 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors inline-block"
-          >
-            Ouvrir l'espace locataire
-          </a>
-          <button 
-            onClick={onClose} 
-            className="w-full py-2.5 px-4 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            Fermer
+            <Copy className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Fast Action Buttons */}
+        <div className="space-y-2 pt-1">
+          <a
+            href={whatsappDirectUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Envoyer directement par WhatsApp</span>
+          </a>
+
+          <a
+            href={gmailDirectUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+          >
+            <Send className="w-4 h-4" />
+            <span>Ouvrir Gmail (Rédiger au locataire)</span>
+          </a>
+
+          <button 
+            onClick={copyLink}
+            className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+          >
+            <Copy className="w-4 h-4" />
+            <span>{copied ? 'Lien copié !' : 'Copier le lien d\'accès'}</span>
+          </button>
+        </div>
+
+        <button 
+          onClick={onClose} 
+          className="w-full py-2.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 font-semibold transition-colors"
+        >
+          Fermer la fenêtre
+        </button>
       </div>
     </div>
   );
@@ -917,20 +1037,78 @@ function AddPaymentModal({ tenant, onClose }: { tenant: any, onClose: () => void
     if (!auth.currentUser) return;
     setLoading(true);
     setError('');
+
+    const numAmount = Number(formData.amount);
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
+      setError("Le montant doit être un chiffre strictement supérieur à 0 $.");
+      setLoading(false);
+      return;
+    }
+
     try {
       const now = new Date().toISOString();
+      const pDate = new Date(formData.date);
+      const monthKey = `${pDate.getFullYear()}-${String(pDate.getMonth() + 1).padStart(2, '0')}-${formData.type}`;
+
+      // Check duplicates in payments collection for this tenant
+      const qDup = query(
+        collection(db, 'payments'),
+        where('tenantId', '==', tenant.id),
+        where('type', '==', formData.type)
+      );
+      const snap = await getDocs(qDup);
+      const duplicateFound = snap.docs.find(d => {
+        const p = d.data();
+        if (p.status === 'Rejeté') return false;
+        const dDate = new Date(p.date);
+        return dDate.getFullYear() === pDate.getFullYear() && dDate.getMonth() === pDate.getMonth();
+      });
+
+      if (duplicateFound) {
+        const existingData = duplicateFound.data();
+        if (existingData.status === 'En attente') {
+          // If there was an existing pending payment from tenant for this month, validate it
+          await updateDoc(doc(db, 'payments', duplicateFound.id), {
+            ...formData,
+            amount: numAmount,
+            date: new Date(formData.date).toISOString(),
+            status: 'Confirmé',
+            confirmedAt: now,
+            confirmedBy: auth.currentUser.uid,
+            monthKey
+          });
+          toast.success("Le paiement en attente pour ce mois a été validé et mis à jour !");
+          onClose();
+          return;
+        } else {
+          const proceed = window.confirm(
+            `Attention : Un paiement de ${existingData.amount} $ est déjà validé pour ${formData.type} en ${pDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}. Souhaitez-vous enregistrer un second versement pour ce même mois ?`
+          );
+          if (!proceed) {
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
       await addDoc(collection(db, 'payments'), {
         ...formData,
-        amount: Number(formData.amount),
+        amount: numAmount,
         date: new Date(formData.date).toISOString(),
+        monthKey,
+        status: 'Confirmé',
+        confirmedAt: now,
+        confirmedBy: auth.currentUser.uid,
         tenantId: tenant.id,
         landlordId: auth.currentUser.uid,
         createdAt: now
       });
+
+      toast.success("Paiement enregistré et validé avec succès !");
       onClose();
     } catch (error) {
       console.error("Error adding payment", error);
-      setError("Erreur lors de l'ajout.");
+      setError("Erreur lors de l'enregistrement du paiement.");
     } finally {
       setLoading(false);
     }

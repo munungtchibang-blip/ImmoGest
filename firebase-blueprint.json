@@ -467,6 +467,33 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["landlordId", "periodType", "startDate", "endDate", "totalExpected", "totalCollected", "totalExpenses", "netIncome", "createdAt"]
+    },
+    "TerminationProcedure": {
+      "title": "TerminationProcedure",
+      "description": "Notice and contract termination procedure for leases and technician service agreements.",
+      "type": "object",
+      "properties": {
+        "landlordId": { "type": "string" },
+        "contractId": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "technicianId": { "type": "string" },
+        "initiator": { "type": "string", "enum": ["landlord", "tenant", "technician"] },
+        "procedureType": { "type": "string", "enum": ["preavis_location", "resiliation_technicien", "accord_amiable", "manquement_contractuel"] },
+        "reason": { "type": "string" },
+        "legalBasis": { "type": "string" },
+        "notificationDate": { "type": "string" },
+        "effectiveDate": { "type": "string" },
+        "desiredEndDate": { "type": "string" },
+        "confirmedEndDate": { "type": "string" },
+        "noticeDurationMonths": { "type": "number" },
+        "status": { "type": "string" },
+        "closureChecklist": { "type": "object" },
+        "events": { "type": "array" },
+        "comments": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["landlordId", "procedureType", "reason", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -577,6 +604,12 @@
         "$ref": "#/entities/FinancialReport"
       },
       "description": "Collection of saved periodic financial reports."
+    },
+    "/termination_procedures/{procedureId}": {
+      "schema": {
+        "$ref": "#/entities/TerminationProcedure"
+      },
+      "description": "Collection of lease notices, preavis, technician service terminations and closure records."
     }
   }
 }
