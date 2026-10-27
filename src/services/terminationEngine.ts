@@ -89,6 +89,10 @@ export interface TerminationProcedure {
   events: TerminationEvent[];
   comments: TerminationComment[];
   attachmentUrls?: string[];
+  communeActNumber?: string;
+  communeName?: string;
+  communeDeliveryDate?: string;
+  communeDocUrl?: string;
   createdAt: string;
   updatedAt: string;
   closedAt?: string;
@@ -197,13 +201,30 @@ export function generateNoticeLetterPDF(procedure: TerminationProcedure, landlor
     yPos += lines.length * 5.5 + 4;
   });
 
+  // Justification Communale (Kinshasa)
+  if (procedure.communeActNumber || procedure.communeName) {
+    doc.setFillColor(239, 246, 255);
+    doc.setDrawColor(191, 219, 254);
+    doc.roundedRect(14, yPos + 2, 182, 18, 2, 2, 'FD');
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(30, 58, 138);
+    doc.text("VISA ET JUSTIFICATION DE LA MAISON COMMUNALE :", 18, yPos + 8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(31, 41, 55);
+    const communeInfo = `Commune de : ${procedure.communeName || 'Kinshasa'} | N° Acte/Attestation : ${procedure.communeActNumber || 'En cours d\'enregistrement'}${procedure.communeDeliveryDate ? ` | Délivré le : ${procedure.communeDeliveryDate}` : ''}`;
+    doc.text(communeInfo, 18, yPos + 15);
+    yPos += 24;
+  }
+
   // Signatures
   doc.setFont("helvetica", "bold");
-  doc.text("Signature de l'Émetteur :", 14, Math.max(yPos + 10, 240));
-  doc.text("Accusé de réception du Destinataire :", 115, Math.max(yPos + 10, 240));
+  doc.setTextColor(31, 41, 55);
+  doc.text("Signature de l'Émetteur :", 14, Math.max(yPos + 8, 240));
+  doc.text("Accusé de réception du Destinataire :", 115, Math.max(yPos + 8, 240));
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text("(Mention manuscrite 'Reçu le ... et pris acte')", 115, Math.max(yPos + 16, 246));
+  doc.text("(Mention manuscrite 'Reçu le ... et pris acte')", 115, Math.max(yPos + 14, 246));
 
   doc.save(`lettre_preavis_${procedure.targetName.replace(/\s+/g, '_')}_${procedure.id.substring(0, 6)}.pdf`);
 }

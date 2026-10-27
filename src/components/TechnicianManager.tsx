@@ -12,9 +12,12 @@ import {
   Edit3, 
   X, 
   MessageCircle, 
-  KeyRound 
+  KeyRound,
+  Send,
+  ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatDRCWhatsAppPhone, getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
 
 export interface TechnicianAccount {
   id: string;
@@ -81,11 +84,10 @@ export function TechnicianManager() {
   const shareViaWhatsApp = (tech: TechnicianAccount) => {
     const origin = window.location.origin;
     const link = `${origin}/tech?code=${tech.accessCode}`;
-    const text = encodeURIComponent(
-      `Bonjour ${tech.name},\nVoici votre lien d'accès sécurisé à l'Espace Technicien ImmoGest pour gérer vos interventions et contrats :\n${link}\n\nVotre code d'accès : ${tech.accessCode}`
-    );
-    const cleanPhone = tech.phone.replace(/[^0-9]/g, '');
-    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${text}`, '_blank');
+    const message = `Bonjour ${tech.name},\nVoici votre lien d'accès sécurisé à l'Espace Technicien ImmoGest pour gérer vos interventions et contrats :\n${link}\n\nVotre code d'accès : ${tech.accessCode}`;
+    const directUrl = getWhatsAppShareUrl(tech.phone, message);
+    window.open(directUrl, '_blank', 'noopener,noreferrer');
+    toast.success("WhatsApp ouvert avec le message prêt !");
   };
 
   const shareViaGmail = (tech: TechnicianAccount) => {
@@ -95,11 +97,12 @@ export function TechnicianManager() {
     }
     const origin = window.location.origin;
     const link = `${origin}/tech?code=${tech.accessCode}`;
-    const subject = encodeURIComponent(`Votre accès Technicien ImmoGest - ${tech.name}`);
-    const body = encodeURIComponent(
-      `Bonjour ${tech.name},\n\nVotre compte de prestataire technique a été créé sur ImmoGest.\n\nVous pouvez accéder à vos interventions, saisir vos rapports et suivre vos contrats via le lien sécurisé suivant :\n${link}\n\nVotre code d'accès direct : ${tech.accessCode}\n\nBien cordialement,\nLe Gestionnaire ImmoGest`
-    );
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(tech.email)}&su=${subject}&body=${body}`, '_blank');
+    const subject = `Votre accès Technicien ImmoGest - ${tech.name}`;
+    const body = `Bonjour ${tech.name},\n\nVotre compte de prestataire technique a été créé sur ImmoGest.\n\nVous pouvez accéder à vos interventions, saisir vos rapports et suivre vos contrats via le lien sécurisé suivant :\n${link}\n\nVotre code d'accès direct : ${tech.accessCode}\n\nBien cordialement,\nLe Gestionnaire ImmoGest`;
+    
+    const gmailUrl = getGmailComposeUrl(tech.email, subject, body);
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    toast.success("Gmail ouvert avec le lien prêt à envoyer !");
   };
 
   const handleDelete = async (id: string) => {
@@ -503,7 +506,6 @@ function TechnicianModal({
 function TechnicianAccessDispatchModal({ info, onClose }: { info: any; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const portalUrl = `${window.location.origin}/tech?code=${info.accessCode}`;
-  const cleanPhone = (info.phone || '').replace(/[^0-9]/g, '');
 
   const whatsappMessage = `Bonjour ${info.name},\nVotre bailleur/gestionnaire vous a enregistré comme technicien sur ImmoGest.\nVoici votre lien d'accès direct et sécurisé à votre espace d'interventions et de rapports techniques :\n${portalUrl}\n\nVotre code d'accès : ${info.accessCode}`;
 
@@ -518,17 +520,20 @@ function TechnicianAccessDispatchModal({ info, onClose }: { info: any; onClose: 
   };
 
   const handleWhatsApp = () => {
-    const directUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappMessage)}`;
-    window.open(directUrl, '_blank');
+    const directUrl = getWhatsAppShareUrl(info.phone, whatsappMessage);
+    window.open(directUrl, '_blank', 'noopener,noreferrer');
+    toast.success("WhatsApp ouvert avec le message prêt !");
   };
 
   const handleGmail = () => {
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(info.email || '')}&su=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
-    window.open(gmailUrl, '_blank');
+    const gmailUrl = getGmailComposeUrl(info.email, mailSubject, mailBody);
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    toast.success("Gmail ouvert avec le lien prêt !");
   };
 
   const handleDefaultMail = () => {
-    window.location.href = `mailto:${info.email}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(mailBody)}`;
+    const mailtoUrl = getMailtoUrl(info.email, mailSubject, mailBody);
+    window.location.href = mailtoUrl;
   };
 
   return (

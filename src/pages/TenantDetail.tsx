@@ -21,12 +21,17 @@ import {
   Smartphone,
   MessageSquare,
   Copy,
-  Send
+  Send,
+  Mail,
+  ExternalLink,
+  ShieldCheck,
+  Building
 } from 'lucide-react';
 import { format, intervalToDuration } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
+import { formatDRCWhatsAppPhone, getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
 
 export function TenantDetail() {
   const { id } = useParams();
@@ -446,33 +451,88 @@ export function TenantDetail() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setShowEditTenant(true)}
-              className="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2.5 rounded-xl font-medium transition-colors"
+              onClick={() => {
+                const portalUrl = `${window.location.origin}/pay/${tenant.id}`;
+                const msg = `Bonjour ${tenant.name},\nVoici le lien sécurisé vers votre espace locataire personnel sur ImmoGest :\n${portalUrl}\nVous pouvez y régler votre loyer en ligne, télécharger vos quittances officielles, suivre votre contrat et vos signalements.`;
+                const url = getWhatsAppShareUrl(tenant.phone, msg);
+                window.open(url, '_blank', 'noopener,noreferrer');
+                toast.success("WhatsApp ouvert avec le message prêt à envoyer !");
+              }}
+              title="Envoyer le lien directement par WhatsApp"
+              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs shadow-sm transition-all btn-interact"
             >
-              <Edit2 className="w-5 h-5" />
-              Modifier
+              <MessageSquare className="w-4 h-4" />
+              <span>WhatsApp</span>
             </button>
+
             <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center justify-center gap-2 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 px-4 py-2.5 rounded-xl font-medium transition-colors"
+              onClick={async () => {
+                const portalUrl = `${window.location.origin}/pay/${tenant.id}`;
+                const subject = `Votre Espace Locataire Sécurisé - ImmoGest (${tenant.name})`;
+                const body = `Bonjour ${tenant.name},\n\nVoici le lien sécurisé vers votre espace locataire personnel sur ImmoGest :\n${portalUrl}\n\nDepuis votre espace personnel, vous pouvez :\n- Consulter votre contrat et vos quittances officielles certifiées\n- Déclarer ou effectuer vos paiements de loyer en ligne\n- Signaler vos besoins de réparation directement au bailleur\n\nCordialement,\nVotre Bailleur / Gestionnaire`;
+
+                try {
+                  if (auth.currentUser) {
+                    await addDoc(collection(db, 'email_dispatches'), {
+                      tenantId: tenant.id,
+                      recipientEmail: tenant.email || 'non-renseigné',
+                      recipientName: tenant.name,
+                      subject,
+                      portalUrl,
+                      sentBy: auth.currentUser.uid,
+                      sentAt: new Date().toISOString(),
+                      channel: 'gmail'
+                    });
+                  }
+                } catch (e) {
+                  console.warn("Could not log email dispatch", e);
+                }
+
+                if (!tenant.email) {
+                  toast("Astuce : Pensez à renseigner l'email du locataire dans Modifier.", { icon: 'ℹ️' });
+                }
+
+                const gmailUrl = getGmailComposeUrl(tenant.email, subject, body);
+                window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+                toast.success("Gmail ouvert avec le lien prêt à envoyer !");
+              }}
+              title="Envoyer le lien directement par Email (Gmail)"
+              className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs shadow-sm transition-all btn-interact"
             >
-              <Trash2 className="w-5 h-5" />
-              Supprimer
+              <Mail className="w-4 h-4" />
+              <span>Email (Gmail)</span>
             </button>
 
             <button
               onClick={() => setShowPortalLinkModal(true)}
-              className="flex items-center justify-center gap-2 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 px-4 py-2.5 rounded-xl font-medium transition-colors"
+              className="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-colors btn-interact"
             >
-              <CreditCard className="w-5 h-5" />
-              Espace Locataire
+              <Smartphone className="w-4 h-4" />
+              <span>Espace Locataire</span>
             </button>
+
             <button
               onClick={() => setShowPaymentForm(true)}
-              className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl font-medium transition-colors"
+              className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs shadow-sm transition-all btn-interact"
             >
-              <CreditCard className="w-5 h-5" />
-              Ajouter un paiement
+              <CreditCard className="w-4 h-4" />
+              <span>Ajouter paiement</span>
+            </button>
+
+            <button
+              onClick={() => setShowEditTenant(true)}
+              className="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-3 py-2.5 rounded-xl font-medium text-xs transition-colors"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span>Modifier</span>
+            </button>
+
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center justify-center p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 rounded-xl transition-colors"
+              title="Supprimer le dossier"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -841,11 +901,32 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
   const baseUrl = window.location.origin;
   const paymentUrl = `${baseUrl}/pay/${tenant.id}`;
 
-  const cleanPhone = tenant.phone ? tenant.phone.replace(/[^0-9]/g, '') : '';
-  const shareMessage = `Bonjour ${tenant.name},\nVoici le lien sécurisé vers votre espace locataire personnel sur ImmoGest :\n${paymentUrl}\nVous pouvez y régler votre loyer en ligne, télécharger vos quittances officielles, suivre votre contrat et vos signalements.`;
+  const shareMessage = `Bonjour ${tenant.name},\nVoici le lien d'accès sécurisé à votre espace locataire ImmoGest :\n${paymentUrl}\nVous pouvez y consulter votre contrat, régler votre loyer en ligne, télécharger vos quittances certifiées et signaler vos réparations.`;
 
-  const whatsappDirectUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(shareMessage)}`;
-  const gmailDirectUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(tenant.email || '')}&su=${encodeURIComponent("Votre Espace Locataire Sécurisé - ImmoGest")}&body=${encodeURIComponent(shareMessage)}`;
+  const whatsappDirectUrl = getWhatsAppShareUrl(tenant.phone, shareMessage);
+  const emailSubject = `Votre Espace Locataire Personnel ImmoGest (${tenant.name})`;
+  const gmailDirectUrl = getGmailComposeUrl(tenant.email, emailSubject, shareMessage);
+  const mailtoDirectUrl = getMailtoUrl(tenant.email, emailSubject, shareMessage);
+
+  const logDispatch = async (channel: 'whatsapp' | 'gmail' | 'mailto') => {
+    try {
+      if (auth.currentUser) {
+        await addDoc(collection(db, 'email_dispatches'), {
+          tenantId: tenant.id,
+          recipientEmail: tenant.email || 'non-renseigné',
+          recipientPhone: tenant.phone || 'non-renseigné',
+          recipientName: tenant.name,
+          subject: emailSubject,
+          portalUrl: paymentUrl,
+          sentBy: auth.currentUser.uid,
+          sentAt: new Date().toISOString(),
+          channel
+        });
+      }
+    } catch (e) {
+      console.warn("Could not record portal dispatch log", e);
+    }
+  };
 
   const copyLink = () => {
     navigator.clipboard.writeText(paymentUrl);
@@ -856,12 +937,12 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 transition-colors relative tab-enter space-y-4">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 transition-colors relative modal-enter space-y-4">
         <button 
           onClick={onClose}
-          className="absolute top-4 left-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+          className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <span className="text-xl font-bold leading-none">×</span>
         </button>
 
         <div className="text-center pt-2">
@@ -869,12 +950,24 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
             <Smartphone className="w-6 h-6" />
           </div>
           <h2 className="text-lg font-black text-gray-900 dark:text-white">Partage Espace Locataire</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Destiné à {tenant.name}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Destiné à : <strong>{tenant.name}</strong></p>
         </div>
 
         {/* Strict Role Separation Notice */}
         <div className="p-3 bg-amber-50/80 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl text-[11px] text-amber-900 dark:text-amber-200 leading-relaxed">
           <strong>Règle de séparation des rôles :</strong> Ce lien est strictement réservé au locataire. En tant que bailleur, vous ne devez pas vous connecter avec ce lien. Vos validations s'effectuent depuis votre tableau de bord bailleur.
+        </div>
+
+        {/* Tenant Contacts Details */}
+        <div className="bg-gray-50 dark:bg-gray-900/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800 text-xs space-y-1">
+          <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+            <span>Numéro WhatsApp :</span>
+            <span className="font-semibold text-gray-900 dark:text-white">{tenant.phone || 'Non renseigné'}</span>
+          </div>
+          <div className="flex justify-between items-center text-gray-600 dark:text-gray-400">
+            <span>Adresse Email :</span>
+            <span className="font-semibold text-gray-900 dark:text-white">{tenant.email || 'Non renseignée (optionnelle)'}</span>
+          </div>
         </div>
 
         {/* Link Box */}
@@ -895,7 +988,8 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
             href={whatsappDirectUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+            onClick={() => logDispatch('whatsapp')}
+            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm btn-interact"
           >
             <MessageSquare className="w-4 h-4" />
             <span>Envoyer directement par WhatsApp</span>
@@ -905,15 +999,25 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
             href={gmailDirectUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+            onClick={() => logDispatch('gmail')}
+            className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm btn-interact"
           >
             <Send className="w-4 h-4" />
             <span>Ouvrir Gmail (Rédiger au locataire)</span>
           </a>
 
+          <a
+            href={mailtoDirectUrl}
+            onClick={() => logDispatch('mailto')}
+            className="w-full py-2.5 px-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <Mail className="w-4 h-4" />
+            <span>Ouvrir avec une autre application Mail (Outlook / Mail)</span>
+          </a>
+
           <button 
             onClick={copyLink}
-            className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 btn-interact"
           >
             <Copy className="w-4 h-4" />
             <span>{copied ? 'Lien copié !' : 'Copier le lien d\'accès'}</span>
@@ -922,7 +1026,7 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
 
         <button 
           onClick={onClose} 
-          className="w-full py-2.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 font-semibold transition-colors"
+          className="w-full py-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 font-semibold transition-colors"
         >
           Fermer la fenêtre
         </button>

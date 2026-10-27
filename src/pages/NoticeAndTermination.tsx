@@ -26,6 +26,7 @@ import {
   generateClosureInventoryPDF 
 } from '../services/terminationEngine';
 import { useSubscription } from '../context/SubscriptionContext';
+import { KINSHASA_COMMUNES } from '../utils/phoneUtils';
 
 export function NoticeAndTermination() {
   const { openSubscriptionModal } = useSubscription();
@@ -329,6 +330,18 @@ export function NoticeAndTermination() {
                       </span>
                     )}
                   </div>
+
+                  {(proc.communeActNumber || proc.communeName) && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-[11px] text-amber-900 dark:text-amber-200 font-medium">
+                      <span>🏛️ Commune de {proc.communeName || 'Kinshasa'}</span>
+                      {proc.communeActNumber && <span>• N° {proc.communeActNumber}</span>}
+                      {proc.communeDocUrl && (
+                        <a href={proc.communeDocUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline font-bold ml-1">
+                          Voir justificatif
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -427,6 +440,10 @@ function CreateProcedureModal({
   const [legalBasis, setLegalBasis] = useState('Loi n° 15/025 du 31 décembre 2015 relative aux baux à loyer en RDC (Art. 18)');
   const [notificationDate, setNotificationDate] = useState(new Date().toISOString().split('T')[0]);
   const [noticeDurationMonths, setNoticeDurationMonths] = useState(3);
+  const [communeName, setCommuneName] = useState('Gombe');
+  const [communeActNumber, setCommuneActNumber] = useState('');
+  const [communeDeliveryDate, setCommuneDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [communeDocUrl, setCommuneDocUrl] = useState('');
 
   const handleProcedureTypeChange = (newType: ProcedureType) => {
     setProcedureType(newType);
@@ -499,6 +516,10 @@ function CreateProcedureModal({
         desiredEndDate: calculatedEndDate,
         confirmedEndDate: calculatedEndDate,
         noticeDurationMonths,
+        communeName: isTenantType ? communeName : undefined,
+        communeActNumber: isTenantType ? communeActNumber.trim() : undefined,
+        communeDeliveryDate: isTenantType ? communeDeliveryDate : undefined,
+        communeDocUrl: isTenantType ? communeDocUrl : undefined,
         status: 'Préavis en cours',
         closureChecklist: {
           rentPaidUpToDate: false,
@@ -521,7 +542,7 @@ function CreateProcedureModal({
             author: auth.currentUser.displayName || 'Bailleur',
             role: initiator,
             action: 'Procédure initiée',
-            details: `Notification formelle de préavis (${noticeDurationMonths} mois). Échéance calculée : ${calculatedEndDate}`
+            details: `Notification formelle de préavis (${noticeDurationMonths} mois). Échéance calculée : ${calculatedEndDate}${communeActNumber ? ` [Acte communal N° ${communeActNumber} - ${communeName}]` : ''}`
           }
         ],
         comments: [],
@@ -670,6 +691,74 @@ function CreateProcedureModal({
               className="w-full p-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-gray-900 dark:text-white text-xs"
             />
           </div>
+
+          {/* Justification Communale - Maison Communale de Kinshasa */}
+          {procedureType !== 'resiliation_technicien' && (
+            <div className="p-4 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-bold text-xs uppercase tracking-wider">
+                <span>🏛️ Visa & Justification Commune (Kinshasa)</span>
+              </div>
+              <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                Légalisation administrative de l'avis de congé auprès de la maison communale locale.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">Maison Communale</label>
+                  <select
+                    value={communeName}
+                    onChange={e => setCommuneName(e.target.value)}
+                    className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-xs text-gray-900 dark:text-white"
+                  >
+                    {KINSHASA_COMMUNES.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">N° Acte / Attestation</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: ACT-2026/089"
+                    value={communeActNumber}
+                    onChange={e => setCommuneActNumber(e.target.value)}
+                    className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-xs text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">Date délivrance commune</label>
+                  <input
+                    type="date"
+                    value={communeDeliveryDate}
+                    onChange={e => setCommuneDeliveryDate(e.target.value)}
+                    className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg outline-none text-xs text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-700 dark:text-gray-300 mb-1">Scan document commune</label>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setCommuneDocUrl(reader.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="w-full text-[11px] text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-amber-100 file:text-amber-800"
+                  />
+                </div>
+              </div>
+              {communeDocUrl && (
+                <p className="text-[10px] text-emerald-600 font-semibold">✓ Document communal joint à la notification</p>
+              )}
+            </div>
+          )}
 
           <div className="pt-3 flex gap-2">
             <button

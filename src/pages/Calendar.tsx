@@ -17,6 +17,7 @@ import {
   isToday
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { getWhatsAppShareUrl } from '../utils/phoneUtils';
 
 export function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -27,10 +28,12 @@ export function Calendar() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   
-  const [filterType, setFilterType] = useState<'all' | 'payments' | 'expenses' | 'maintenance'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'payments' | 'expenses' | 'maintenance' | 'contracts' | 'notices'>('all');
   const [filterProperty, setFilterProperty] = useState<string>('all');
 
   useEffect(() => {
@@ -55,8 +58,16 @@ export function Calendar() {
 
     const unsubExpenses = onSnapshot(query(collection(db, 'expenses'), where('landlordId', '==', uid)), (snap) => {
       setExpenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
     }, (error) => { handleFirestoreError(error, OperationType.LIST, 'expenses'); });
+
+    const unsubContracts = onSnapshot(query(collection(db, 'contracts'), where('landlordId', '==', uid)), (snap) => {
+      setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, () => {});
+
+    const unsubNotices = onSnapshot(query(collection(db, 'termination_procedures'), where('landlordId', '==', uid)), (snap) => {
+      setNotices(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, () => { setLoading(false); });
 
     return () => {
       unsubProperties();
@@ -64,6 +75,8 @@ export function Calendar() {
       unsubPayments();
       unsubMaintenance();
       unsubExpenses();
+      unsubContracts();
+      unsubNotices();
     };
   }, []);
 
@@ -177,37 +190,76 @@ export function Calendar() {
       });
     }
 
+    // Contract Expirations
+    if (filterType === 'all' || filterType === 'contracts') {
+      contracts.forEach(c => {
+        if (!c.endDate) return;
+        const tenant = tenants.find(t => t.id === c.tenantId);
+        if (filterProperty !== 'all' && (c.propertyId !== filterProperty && tenant?.propertyId !== filterProperty)) return;
+
+        if (isSameDay(new Date(c.endDate), day)) {
+          dayEvents.push({
+            type: 'contract',
+            title: `Fin Bail : ${c.tenantName || tenant?.name || 'Locataire'}`,
+            color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800',
+            data: c,
+            tenant
+          });
+        }
+      });
+    }
+
+    // Departure Notices & Terminations
+    if (filterType === 'all' || filterType === 'notices') {
+      notices.forEach(n => {
+        const targetDate = n.confirmedEndDate || n.effectiveDate;
+        if (!targetDate) return;
+        if (isSameDay(new Date(targetDate), day)) {
+          const tenant = tenants.find(t => t.id === n.tenantId);
+          dayEvents.push({
+            type: 'notice',
+            title: `Fin Préavis : ${n.targetName}`,
+            color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+            data: n,
+            tenant
+          });
+        }
+      });
+    }
+
     return dayEvents;
   };
 
   const sendWhatsAppReminder = (tenant: any) => {
-    const phone = tenant.phone.replace(/\D/g, '');
-    const message = `Bonjour ${tenant.name}, sauf erreur de notre part, le loyer de ce mois n'a pas encore été réglé. Merci de nous tenir informés.`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    const message = `Bonjour ${tenant.name},\nSauf erreur de notre part, le loyer de ce mois n'a pas encore été validé sur votre espace ImmoGest.\nMerci de régulariser ou de nous transmettre votre preuve de versement.\nBien cordialement,\nVotre Bailleur.`;
+    const directUrl = getWhatsAppShareUrl(tenant.phone, message);
+    window.open(directUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
-    <div className="space-y-6">
-      <Link to="/" className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-all group font-medium">
+    <div className="space-y-6 page-enter">
+      <Link to="/" className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400 transition-all group font-medium text-sm">
         <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Retour au tableau de bord
       </Link>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">Calendrier</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors">Vue mensuelle des paiements et événements.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white transition-colors">Calendrier Immobilier</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 transition-colors text-sm">Paiements, loyers, échéances de baux, préavis communaux et interventions.</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-center gap-3">
           <div className="flex gap-2">
             <select
               value={filterType}
               onChange={e => setFilterType(e.target.value as any)}
-              className="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white outline-none"
+              className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white text-xs font-semibold outline-none shadow-xs"
             >
               <option value="all">Tous les événements</option>
-              <option value="payments">Paiements uniquement</option>
-              <option value="expenses">Dépenses uniquement</option>
-              <option value="maintenance">Maintenance uniquement</option>
+              <option value="payments">Paiements de loyers</option>
+              <option value="contracts">Échéances de baux</option>
+              <option value="notices">Préavis & Départs</option>
+              <option value="expenses">Dépenses & Travaux</option>
+              <option value="maintenance">Tickets d'intervention</option>
             </select>
             <select
               value={filterProperty}
