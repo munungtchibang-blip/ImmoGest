@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, deleteField } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { ArrowLeft, Home, Users, CreditCard, Receipt, TrendingUp, Edit2, Building2, DollarSign, Plus, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Home, Users, Receipt, Edit2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PhotoModal } from '../components/PhotoModal';
@@ -189,7 +189,7 @@ export function PropertyDetail() {
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Taux d'occupation</p>
           <div className="flex items-baseline gap-2 mt-2">
             <p className="text-2xl font-black text-gray-900 dark:text-white">{occupancyRate}%</p>
-            <span className="text-xs text-gray-500 font-medium">{occupiedUnits}/{totalUnits} unités</span>
+            <span className="text-xs text-gray-500 font-medium">{occupiedUnits}/{totalUnits} unités ({vacantUnits} libre(s))</span>
           </div>
           <div className="w-full bg-gray-100 dark:bg-gray-700 h-2 rounded-full mt-2.5 overflow-hidden">
             <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${occupancyRate}%` }}></div>

@@ -17,14 +17,18 @@ import {
   ArrowUpRight, 
   Sparkles,
   CheckCircle2,
-  Radio
+  Radio,
+  CheckSquare,
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { startOfMonth, endOfMonth, subMonths } from 'date-fns';
+import { startOfMonth, endOfMonth, subMonths, isBefore, addDays } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useSubscription } from '../context/SubscriptionContext';
+import { getWhatsAppShareUrl } from '../utils/phoneUtils';
 
 type DashboardTab = 'overview' | 'finances' | 'occupations';
 
@@ -37,6 +41,9 @@ export function Dashboard() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [maintenanceIssues, setMaintenanceIssues] = useState<any[]>([]);
+  const [actionFilter, setActionFilter] = useState<'all' | 'urgent' | 'payments' | 'maintenance' | 'contracts'>('all');
   const [stats, setStats] = useState({
     totalTenants: 0,
     monthlyRevenue: 0,
@@ -126,10 +133,21 @@ export function Dashboard() {
       where('status', 'in', ['En attente', 'En cours'])
     );
     const unsubIssues = onSnapshot(qIssues, (snapshot) => {
+      const issues = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMaintenanceIssues(issues);
       setStats(prev => ({ ...prev, pendingIssues: snapshot.size }));
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'maintenance');
+    });
+
+    // Listen to contracts for renewal alerts
+    const qContracts = query(collection(db, 'contracts'), where('landlordId', '==', uid));
+    const unsubContracts = onSnapshot(qContracts, (snapshot) => {
+      const cData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setContracts(cData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'contracts');
     });
 
     // Listen to expenses this month
@@ -160,6 +178,7 @@ export function Dashboard() {
       unsubProperties();
       unsubPayments();
       unsubIssues();
+      unsubContracts();
       unsubExpenses();
       unsubRadar();
     };
@@ -249,10 +268,99 @@ export function Dashboard() {
   }, [tenants, payments, properties, hiddenNotifications]);
 
   const sendWhatsAppReminder = (tenant: any) => {
-    const phone = tenant.phone.replace(/\D/g, '');
     const message = `Bonjour ${tenant.name}, sauf erreur de notre part, le loyer de ce mois n'a pas encore été réglé. Merci de nous tenir informés.`;
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+    const url = getWhatsAppShareUrl(tenant.phone, message);
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
+
+  // Prioritized Action Items
+  const actionItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      priority: 'urgent' | 'important' | 'surveillance';
+      type: 'payment' | 'maintenance' | 'contract' | 'vacancy';
+      title: string;
+      desc: string;
+      badge: string;
+      actionLabel: string;
+      onAction?: () => void;
+      link?: string;
+    }> = [];
+
+    // 1. Late payments (Urgent)
+    lateTenants.forEach(t => {
+      items.push({
+        id: `late_${t.id}`,
+        priority: 'urgent',
+        type: 'payment',
+        title: `Loyer en retard : ${t.name}`,
+        desc: `${t.monthlyRent} $ attendus • ${t.propertyAddress || t.address || 'Logement'}`,
+        badge: 'Retard de loyer',
+        actionLabel: 'Rappel WhatsApp',
+        onAction: () => sendWhatsAppReminder(t),
+        link: `/tenants/${t.id}`
+      });
+    });
+
+    // 2. Pending & Urgent Maintenance
+    maintenanceIssues.forEach(m => {
+      const isUrgent = m.urgency === 'Urgent' || m.urgency === 'Élevée';
+      items.push({
+        id: `maint_${m.id}`,
+        priority: isUrgent ? 'urgent' : 'important',
+        type: 'maintenance',
+        title: `Panne : ${m.title || m.category || 'Intervention requise'}`,
+        desc: `${m.propertyAddress || 'Logement'} • ${m.technicianName ? `Assigné à ${m.technicianName}` : 'Technicien non assigné'}`,
+        badge: isUrgent ? 'Panne urgente' : 'En attente',
+        actionLabel: 'Gérer incident',
+        link: '/maintenance'
+      });
+    });
+
+    // 3. Expiring Contracts (Within 60 days)
+    const in60Days = addDays(new Date(), 60);
+    contracts.filter(c => c.status === 'active' && c.endDate).forEach(c => {
+      const endD = new Date(c.endDate);
+      if (isBefore(endD, in60Days)) {
+        const isExpired = isBefore(endD, new Date());
+        items.push({
+          id: `contract_${c.id}`,
+          priority: isExpired ? 'urgent' : 'important',
+          type: 'contract',
+          title: `Bail locatif : ${c.tenantName || 'Locataire'}`,
+          desc: `${isExpired ? 'Expiré le' : 'Expire le'} ${c.endDate} • Renouvellement ou préavis requis`,
+          badge: isExpired ? 'Bail échu' : 'Échéance proche',
+          actionLabel: 'Consulter contrat',
+          link: '/contracts'
+        });
+      }
+    });
+
+    // 4. Vacant spaces (Surveillance)
+    unoccupiedStatus.list.slice(0, 3).forEach(u => {
+      items.push({
+        id: `vacant_${u.id}`,
+        priority: 'surveillance',
+        type: 'vacancy',
+        title: `Vacance locative : ${u.name}`,
+        desc: `${u.unoccupiedCount} unité(s) libre(s) • Optimisez votre taux d'occupation`,
+        badge: 'Unité libre',
+        actionLabel: 'Nouveau locataire',
+        link: '/tenants'
+      });
+    });
+
+    return items;
+  }, [lateTenants, maintenanceIssues, contracts, unoccupiedStatus]);
+
+  const filteredActionItems = useMemo(() => {
+    if (actionFilter === 'all') return actionItems;
+    if (actionFilter === 'urgent') return actionItems.filter(i => i.priority === 'urgent');
+    if (actionFilter === 'payments') return actionItems.filter(i => i.type === 'payment');
+    if (actionFilter === 'maintenance') return actionItems.filter(i => i.type === 'maintenance');
+    if (actionFilter === 'contracts') return actionItems.filter(i => i.type === 'contract');
+    return actionItems;
+  }, [actionItems, actionFilter]);
 
   const today = new Date();
   const currentMonth = today.getMonth();
@@ -554,54 +662,170 @@ export function Dashboard() {
               </motion.div>
             </div>
 
-            {/* Late Tenants WhatsApp Alert Banner */}
-            {lateTenants.length > 0 && (
-              <motion.div
-                variants={cardVariants}
-                className="bg-red-50/70 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-2xl p-5"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h2 className="text-sm font-bold text-red-950 dark:text-red-300">
-                        {lateTenants.length} loyer(s) en retard ce mois-ci
+            {/* Centre de Contrôle : Actions Prioritaires à Effectuer */}
+            <motion.div
+              variants={cardVariants}
+              className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700/80 shadow-xs p-4 sm:p-5 space-y-4"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                    <CheckSquare className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-bold text-gray-900 dark:text-white">
+                        Actions à effectuer
                       </h2>
-                      <p className="text-xs text-red-700 dark:text-red-400">
-                        Relancez rapidement vos locataires directement par message WhatsApp.
-                      </p>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+                        {actionItems.length} tâche(s)
+                      </span>
                     </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Gestion des priorités opérationnelles : impayés, pannes urgentes, baux et unités libres
+                    </p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                  {lateTenants.slice(0, 4).map(tenant => (
+                {/* Filter tabs */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none text-xs">
+                  <button
+                    onClick={() => setActionFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      actionFilter === 'all'
+                        ? 'bg-blue-600 text-white font-bold'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Toutes ({actionItems.length})
+                  </button>
+                  <button
+                    onClick={() => setActionFilter('urgent')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      actionFilter === 'urgent'
+                        ? 'bg-rose-600 text-white font-bold'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Urgentes ({actionItems.filter(i => i.priority === 'urgent').length})
+                  </button>
+                  <button
+                    onClick={() => setActionFilter('payments')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      actionFilter === 'payments'
+                        ? 'bg-amber-600 text-white font-bold'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Loyers ({actionItems.filter(i => i.type === 'payment').length})
+                  </button>
+                  <button
+                    onClick={() => setActionFilter('maintenance')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      actionFilter === 'maintenance'
+                        ? 'bg-indigo-600 text-white font-bold'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Pannes ({actionItems.filter(i => i.type === 'maintenance').length})
+                  </button>
+                  <button
+                    onClick={() => setActionFilter('contracts')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      actionFilter === 'contracts'
+                        ? 'bg-emerald-600 text-white font-bold'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Baux ({actionItems.filter(i => i.type === 'contract').length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Action items list */}
+              {filteredActionItems.length === 0 ? (
+                <div className="text-center py-6 border border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-1.5 opacity-80" />
+                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Toutes les priorités sont à jour !
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Aucune action en attente pour cette catégorie.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredActionItems.map(item => (
                     <div
-                      key={tenant.id}
-                      className="flex items-center justify-between bg-white dark:bg-gray-800 p-3 rounded-xl border border-red-100 dark:border-red-900/30 shadow-xs gap-3"
+                      key={item.id}
+                      className="p-3 sm:p-3.5 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/60 hover:bg-white dark:hover:bg-gray-750 hover:shadow-xs transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">
-                          {tenant.name}
-                        </p>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                          {tenant.address} • <span className="font-semibold text-red-600 dark:text-red-400">{tenant.monthlyRent} $</span>
-                        </p>
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                          item.priority === 'urgent'
+                            ? 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400'
+                            : item.priority === 'important'
+                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                            : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                        }`}>
+                          {item.type === 'payment' ? (
+                            <CreditCard className="w-4 h-4" />
+                          ) : item.type === 'maintenance' ? (
+                            <Wrench className="w-4 h-4" />
+                          ) : item.type === 'contract' ? (
+                            <FileText className="w-4 h-4" />
+                          ) : (
+                            <Home className="w-4 h-4" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">
+                              {item.title}
+                            </span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                              item.priority === 'urgent'
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                                : item.priority === 'important'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                                : 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300'
+                            }`}>
+                              {item.badge}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                            {item.desc}
+                          </p>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => sendWhatsAppReminder(tenant)}
-                        className="shrink-0 flex items-center gap-1.5 bg-[#25D366] hover:bg-[#128C7E] text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>Rappel WhatsApp</span>
-                      </button>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                        {item.type === 'payment' && item.onAction && (
+                          <button
+                            onClick={item.onAction}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
+                          </button>
+                        )}
+
+                        {item.link && (
+                          <Link
+                            to={item.link}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-xs"
+                          >
+                            <span>{item.actionLabel}</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
-              </motion.div>
-            )}
+              )}
+            </motion.div>
 
             {/* Quick Actions & Recent Summary */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

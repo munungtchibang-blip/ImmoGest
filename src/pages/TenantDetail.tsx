@@ -22,16 +22,13 @@ import {
   MessageSquare,
   Copy,
   Send,
-  Mail,
-  ExternalLink,
-  ShieldCheck,
-  Building
+  Mail
 } from 'lucide-react';
 import { format, intervalToDuration } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
-import { formatDRCWhatsAppPhone, getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
+import { getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
 
 export function TenantDetail() {
   const { id } = useParams();

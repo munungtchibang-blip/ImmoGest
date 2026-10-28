@@ -45,6 +45,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import toast from 'react-hot-toast';
+import { KINSHASA_COMMUNES } from '../utils/phoneUtils';
 
 function downloadContractPDF(contract: any, tenant: any) {
   const docPdf = new jsPDF();
@@ -322,6 +323,10 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [noticeReason, setNoticeReason] = useState('Déménagement pour raisons personnelles');
   const [noticeDurationMonths, setNoticeDurationMonths] = useState(3);
+  const [noticeCommuneName, setNoticeCommuneName] = useState('Gombe');
+  const [noticeCommuneActNumber, setNoticeCommuneActNumber] = useState('');
+  const [noticeCommuneDeliveryDate, setNoticeCommuneDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [noticeCommuneDocUrl, setNoticeCommuneDocUrl] = useState('');
   const [submittingNotice, setSubmittingNotice] = useState(false);
 
   // Fetch tenant doc and listen to collections
@@ -708,6 +713,10 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
         confirmedEndDate: confirmedEnd,
         desiredEndDate: confirmedEnd,
         noticeDurationMonths: Number(noticeDurationMonths) || 3,
+        communeName: noticeCommuneName,
+        communeActNumber: noticeCommuneActNumber.trim(),
+        communeDeliveryDate: noticeCommuneDeliveryDate,
+        communeDocUrl: noticeCommuneDocUrl || undefined,
         status: 'Préavis en cours',
         closureChecklist: {
           rentPaidUpToDate: false,
@@ -730,7 +739,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
             author: tenant.name,
             role: 'tenant',
             action: 'Dépôt formel du préavis de départ par le locataire',
-            details: `Préavis légal de ${noticeDurationMonths} mois déposé. Échéance calculée : ${new Date(confirmedEnd).toLocaleDateString('fr-FR')}. Motif : ${noticeReason}`
+            details: `Préavis légal de ${noticeDurationMonths} mois déposé. Échéance calculée : ${new Date(confirmedEnd).toLocaleDateString('fr-FR')}. Motif : ${noticeReason}${noticeCommuneActNumber ? ` [Attestation Communale N° ${noticeCommuneActNumber} - ${noticeCommuneName}]` : ''}`
           }
         ],
         comments: [],
@@ -2225,6 +2234,24 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                           </p>
                         </div>
 
+                        {(proc.communeActNumber || proc.communeName) && (
+                          <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-xs space-y-1 text-amber-950">
+                            <span className="font-bold block flex items-center gap-1.5">
+                              🏛️ Visa / Document de la Maison Communale :
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] text-amber-900">
+                              <span>Commune de <strong>{proc.communeName || 'Kinshasa'}</strong></span>
+                              {proc.communeActNumber && <span>• N° Acte : <strong>{proc.communeActNumber}</strong></span>}
+                              {proc.communeDeliveryDate && <span>• Délivré le : {proc.communeDeliveryDate}</span>}
+                              {proc.communeDocUrl && (
+                                <a href={proc.communeDocUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-bold ml-1">
+                                  Voir document joint
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Checklist d'état des lieux & obligations */}
                         <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 text-xs space-y-2">
                           <span className="font-bold text-indigo-950 block">Suivi des obligations de clôture :</span>
@@ -2366,6 +2393,70 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                     <option value="Fin de mission professionnelle à Kinshasa">Fin de mission professionnelle à Kinshasa</option>
                     <option value="Autre motif convenu">Autre motif convenu</option>
                   </select>
+                </div>
+
+                {/* Justificatif communal (Kinshasa) */}
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-amber-950 font-bold text-xs">
+                    <span>🏛️ Justification de la Maison Communale</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-tight">
+                    Enregistrement de votre notification auprès de votre commune à Kinshasa.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Commune</label>
+                      <select
+                        value={noticeCommuneName}
+                        onChange={e => setNoticeCommuneName(e.target.value)}
+                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                      >
+                        {KINSHASA_COMMUNES.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">N° d'Acte communal</label>
+                      <input
+                        type="text"
+                        placeholder="Ex: ACT-2026/04"
+                        value={noticeCommuneActNumber}
+                        onChange={e => setNoticeCommuneActNumber(e.target.value)}
+                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Date délivrance</label>
+                      <input
+                        type="date"
+                        value={noticeCommuneDeliveryDate}
+                        onChange={e => setNoticeCommuneDeliveryDate(e.target.value)}
+                        className="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Document communal</label>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => setNoticeCommuneDocUrl(reader.result as string);
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="w-full text-[10px] text-gray-500 file:mr-1 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:bg-amber-100 file:text-amber-800"
+                      />
+                    </div>
+                  </div>
+                  {noticeCommuneDocUrl && (
+                    <p className="text-[10px] text-emerald-600 font-semibold">✓ Document communal joint avec succès</p>
+                  )}
                 </div>
 
                 <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 text-[11px] text-gray-600 leading-relaxed">

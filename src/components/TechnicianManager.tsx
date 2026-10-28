@@ -12,12 +12,10 @@ import {
   Edit3, 
   X, 
   MessageCircle, 
-  KeyRound,
-  Send,
-  ExternalLink
+  KeyRound
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { formatDRCWhatsAppPhone, getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
+import { getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
 
 export interface TechnicianAccount {
   id: string;
