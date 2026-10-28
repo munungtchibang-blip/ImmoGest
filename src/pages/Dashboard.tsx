@@ -43,7 +43,8 @@ export function Dashboard() {
   const [properties, setProperties] = useState<any[]>([]);
   const [contracts, setContracts] = useState<any[]>([]);
   const [maintenanceIssues, setMaintenanceIssues] = useState<any[]>([]);
-  const [actionFilter, setActionFilter] = useState<'all' | 'urgent' | 'payments' | 'maintenance' | 'contracts'>('all');
+  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [actionFilter, setActionFilter] = useState<'all' | 'urgent' | 'contracts' | 'maintenance' | 'invitations' | 'payments'>('all');
   const [stats, setStats] = useState({
     totalTenants: 0,
     monthlyRevenue: 0,
@@ -126,20 +127,27 @@ export function Dashboard() {
       handleFirestoreError(error, OperationType.LIST, 'payments');
     });
 
-    // Listen to maintenance issues
+    // Listen to maintenance issues (all statuses for comprehensive action items)
     const qIssues = query(
       collection(db, 'maintenance'),
-      where('landlordId', '==', uid),
-      where('status', 'in', ['En attente', 'En cours'])
+      where('landlordId', '==', uid)
     );
     const unsubIssues = onSnapshot(qIssues, (snapshot) => {
       const issues = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMaintenanceIssues(issues);
-      setStats(prev => ({ ...prev, pendingIssues: snapshot.size }));
+      const pendingCount = issues.filter((i: any) => ['En attente', 'En cours', 'Nouvelle', 'Devis soumis', 'Terminée'].includes(i.status)).length;
+      setStats(prev => ({ ...prev, pendingIssues: pendingCount }));
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'maintenance');
     });
+
+    // Listen to registered technicians
+    const qTechs = query(collection(db, 'technicians'), where('landlordId', '==', uid));
+    const unsubTechs = onSnapshot(qTechs, (snapshot) => {
+      const techList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTechnicians(techList);
+    }, () => {});
 
     // Listen to contracts for renewal alerts
     const qContracts = query(collection(db, 'contracts'), where('landlordId', '==', uid));
@@ -178,6 +186,7 @@ export function Dashboard() {
       unsubProperties();
       unsubPayments();
       unsubIssues();
+      unsubTechs();
       unsubContracts();
       unsubExpenses();
       unsubRadar();
@@ -278,7 +287,7 @@ export function Dashboard() {
     const items: Array<{
       id: string;
       priority: 'urgent' | 'important' | 'surveillance';
-      type: 'payment' | 'maintenance' | 'contract' | 'vacancy';
+      type: 'payment' | 'maintenance' | 'contract' | 'invitation' | 'vacancy';
       title: string;
       desc: string;
       badge: string;
@@ -287,7 +296,106 @@ export function Dashboard() {
       link?: string;
     }> = [];
 
-    // 1. Late payments (Urgent)
+    // 1. Expiring Contracts (Within 60 days) or already expired
+    const in60Days = addDays(new Date(), 60);
+    contracts.filter(c => c.status === 'active' && c.endDate).forEach(c => {
+      const endD = new Date(c.endDate);
+      if (isBefore(endD, in60Days)) {
+        const isExpired = isBefore(endD, new Date());
+        items.push({
+          id: `contract_${c.id}`,
+          priority: isExpired ? 'urgent' : 'important',
+          type: 'contract',
+          title: `Contrat à renouveler : ${c.tenantName || 'Locataire'}`,
+          desc: `${isExpired ? 'Bail échu le' : 'Expire le'} ${c.endDate} • Renouvellement, avenant ou préavis requis`,
+          badge: isExpired ? 'Bail échu' : 'Échéance < 60j',
+          actionLabel: 'Gérer contrat',
+          link: '/contracts'
+        });
+      }
+    });
+
+    // 2. Unvalidated Repairs and Urgent Maintenance
+    maintenanceIssues.forEach(m => {
+      // Completed by technician awaiting landlord inspection and payment
+      if (m.status === 'Terminée') {
+        items.push({
+          id: `maint_done_${m.id}`,
+          priority: 'urgent',
+          type: 'maintenance',
+          title: `Réparation terminée à valider : ${m.title || m.category || 'Intervention'}`,
+          desc: `${m.propertyName || 'Bien'} • Réalisée par ${m.technicianName || 'le prestataire'} - Vérifier et procéder au règlement`,
+          badge: 'Validation & Règlement requis',
+          actionLabel: 'Inspecter & Payer',
+          link: '/maintenance'
+        });
+      } else if (m.status === 'Devis soumis') {
+        // Quote submitted by technician awaiting landlord approval
+        items.push({
+          id: `maint_quote_${m.id}`,
+          priority: 'urgent',
+          type: 'maintenance',
+          title: `Devis de réparation en attente : ${m.title || m.category || 'Panne'}`,
+          desc: `Devis de ${m.quote?.totalCost || m.estimatedCost || 0} ${m.quote?.currency || '$'} soumis par ${m.technicianName || 'le prestataire'}`,
+          badge: 'Devis à approuver',
+          actionLabel: 'Examiner devis',
+          link: '/maintenance'
+        });
+      } else if (!m.technicianName && ['En attente', 'Nouvelle'].includes(m.status)) {
+        // Unassigned repair
+        items.push({
+          id: `maint_unassigned_${m.id}`,
+          priority: 'urgent',
+          type: 'maintenance',
+          title: `Panne sans technicien : ${m.title || m.category || 'Incident'}`,
+          desc: `${m.propertyName || 'Bien'} • Aucun prestataire n'est encore assigné à cette intervention`,
+          badge: 'Technicien requis',
+          actionLabel: 'Assigner prestataire',
+          link: '/maintenance'
+        });
+      } else if (['En attente', 'En cours', 'En attente de pièces'].includes(m.status)) {
+        const isUrgent = m.urgency === 'Urgent' || m.urgency === 'Élevée';
+        items.push({
+          id: `maint_${m.id}`,
+          priority: isUrgent ? 'urgent' : 'important',
+          type: 'maintenance',
+          title: `Intervention en cours : ${m.title || m.category || 'Dépannage'}`,
+          desc: `${m.propertyName || m.propertyAddress || 'Logement'} • ${m.technicianName ? `Suivie par ${m.technicianName}` : 'Technicien en attente'}`,
+          badge: isUrgent ? 'Panne urgente' : m.status,
+          actionLabel: 'Voir intervention',
+          link: '/maintenance'
+        });
+      }
+    });
+
+    // 3. Pending Invitations (Tenants unactivated & Technicians)
+    tenants.filter(t => !t.accountActivated && !t.userId).forEach(t => {
+      items.push({
+        id: `invite_tenant_${t.id}`,
+        priority: 'important',
+        type: 'invitation',
+        title: `Invitation locataire en attente : ${t.name}`,
+        desc: `Espace non activé • Partagez le lien d'accès direct par WhatsApp ou Email`,
+        badge: 'Invitation locataire',
+        actionLabel: 'Fiche locataire',
+        link: `/tenants/${t.id}`
+      });
+    });
+
+    technicians.filter(tech => !tech.lastAccess).slice(0, 3).forEach(tech => {
+      items.push({
+        id: `invite_tech_${tech.id}`,
+        priority: 'important',
+        type: 'invitation',
+        title: `Technicien agréé : ${tech.name}`,
+        desc: `${tech.specialty || 'Tous corps d\'état'} • Code de mission : ${tech.accessCode || 'Généré'}`,
+        badge: 'Code d\'accès',
+        actionLabel: 'Gérer prestataires',
+        link: '/maintenance'
+      });
+    });
+
+    // 4. Late payments (Urgent)
     lateTenants.forEach(t => {
       items.push({
         id: `late_${t.id}`,
@@ -302,41 +410,7 @@ export function Dashboard() {
       });
     });
 
-    // 2. Pending & Urgent Maintenance
-    maintenanceIssues.forEach(m => {
-      const isUrgent = m.urgency === 'Urgent' || m.urgency === 'Élevée';
-      items.push({
-        id: `maint_${m.id}`,
-        priority: isUrgent ? 'urgent' : 'important',
-        type: 'maintenance',
-        title: `Panne : ${m.title || m.category || 'Intervention requise'}`,
-        desc: `${m.propertyAddress || 'Logement'} • ${m.technicianName ? `Assigné à ${m.technicianName}` : 'Technicien non assigné'}`,
-        badge: isUrgent ? 'Panne urgente' : 'En attente',
-        actionLabel: 'Gérer incident',
-        link: '/maintenance'
-      });
-    });
-
-    // 3. Expiring Contracts (Within 60 days)
-    const in60Days = addDays(new Date(), 60);
-    contracts.filter(c => c.status === 'active' && c.endDate).forEach(c => {
-      const endD = new Date(c.endDate);
-      if (isBefore(endD, in60Days)) {
-        const isExpired = isBefore(endD, new Date());
-        items.push({
-          id: `contract_${c.id}`,
-          priority: isExpired ? 'urgent' : 'important',
-          type: 'contract',
-          title: `Bail locatif : ${c.tenantName || 'Locataire'}`,
-          desc: `${isExpired ? 'Expiré le' : 'Expire le'} ${c.endDate} • Renouvellement ou préavis requis`,
-          badge: isExpired ? 'Bail échu' : 'Échéance proche',
-          actionLabel: 'Consulter contrat',
-          link: '/contracts'
-        });
-      }
-    });
-
-    // 4. Vacant spaces (Surveillance)
+    // 5. Vacant spaces (Surveillance)
     unoccupiedStatus.list.slice(0, 3).forEach(u => {
       items.push({
         id: `vacant_${u.id}`,
@@ -351,14 +425,15 @@ export function Dashboard() {
     });
 
     return items;
-  }, [lateTenants, maintenanceIssues, contracts, unoccupiedStatus]);
+  }, [contracts, maintenanceIssues, tenants, technicians, lateTenants, unoccupiedStatus]);
 
   const filteredActionItems = useMemo(() => {
     if (actionFilter === 'all') return actionItems;
     if (actionFilter === 'urgent') return actionItems.filter(i => i.priority === 'urgent');
-    if (actionFilter === 'payments') return actionItems.filter(i => i.type === 'payment');
-    if (actionFilter === 'maintenance') return actionItems.filter(i => i.type === 'maintenance');
     if (actionFilter === 'contracts') return actionItems.filter(i => i.type === 'contract');
+    if (actionFilter === 'maintenance') return actionItems.filter(i => i.type === 'maintenance');
+    if (actionFilter === 'invitations') return actionItems.filter(i => i.type === 'invitation');
+    if (actionFilter === 'payments') return actionItems.filter(i => i.type === 'payment');
     return actionItems;
   }, [actionItems, actionFilter]);
 
@@ -710,34 +785,44 @@ export function Dashboard() {
                     Urgentes ({actionItems.filter(i => i.priority === 'urgent').length})
                   </button>
                   <button
-                    onClick={() => setActionFilter('payments')}
+                    onClick={() => setActionFilter('contracts')}
                     className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
-                      actionFilter === 'payments'
-                        ? 'bg-amber-600 text-white font-bold'
+                      actionFilter === 'contracts'
+                        ? 'bg-blue-600 text-white font-bold'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
                     }`}
                   >
-                    Loyers ({actionItems.filter(i => i.type === 'payment').length})
+                    Contrats ({actionItems.filter(i => i.type === 'contract').length})
                   </button>
                   <button
                     onClick={() => setActionFilter('maintenance')}
                     className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
                       actionFilter === 'maintenance'
+                        ? 'bg-amber-600 text-white font-bold'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                    }`}
+                  >
+                    Réparations ({actionItems.filter(i => i.type === 'maintenance').length})
+                  </button>
+                  <button
+                    onClick={() => setActionFilter('invitations')}
+                    className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
+                      actionFilter === 'invitations'
                         ? 'bg-indigo-600 text-white font-bold'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
                     }`}
                   >
-                    Pannes ({actionItems.filter(i => i.type === 'maintenance').length})
+                    Invitations ({actionItems.filter(i => i.type === 'invitation').length})
                   </button>
                   <button
-                    onClick={() => setActionFilter('contracts')}
+                    onClick={() => setActionFilter('payments')}
                     className={`px-2.5 py-1 rounded-lg font-medium transition-colors ${
-                      actionFilter === 'contracts'
+                      actionFilter === 'payments'
                         ? 'bg-emerald-600 text-white font-bold'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
                     }`}
                   >
-                    Baux ({actionItems.filter(i => i.type === 'contract').length})
+                    Loyers ({actionItems.filter(i => i.type === 'payment').length})
                   </button>
                 </div>
               </div>
@@ -774,6 +859,8 @@ export function Dashboard() {
                             <Wrench className="w-4 h-4" />
                           ) : item.type === 'contract' ? (
                             <FileText className="w-4 h-4" />
+                          ) : item.type === 'invitation' ? (
+                            <Users className="w-4 h-4" />
                           ) : (
                             <Home className="w-4 h-4" />
                           )}

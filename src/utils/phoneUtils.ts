@@ -63,6 +63,18 @@ export function formatDRCWhatsAppPhone(rawPhone: string): string {
 }
 
 /**
+ * Format phone for human readable display: +243 81 234 5678
+ */
+export function formatDRCPhone(phone: string): string {
+  if (!phone) return '';
+  const clean = formatDRCWhatsAppPhone(phone);
+  if (clean.startsWith('243') && clean.length === 12) {
+    return `+243 ${clean.slice(3, 5)} ${clean.slice(5, 8)} ${clean.slice(8)}`;
+  }
+  return phone;
+}
+
+/**
  * Generate a universally compatible WhatsApp send URL.
  * Works on mobile (opens WhatsApp app directly) and desktop.
  */

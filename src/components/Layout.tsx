@@ -1,7 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio, FileCheck2 } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio, FileCheck2, MessageSquare } from 'lucide-react';
 import { logout, db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
@@ -21,6 +21,11 @@ export function Layout() {
   const [issues, setIssues] = useState<any[]>([]);
   const [radarCount, setRadarCount] = useState<number>(0);
   const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
+  const [pendingPaymentsCount, setPendingPaymentsCount] = useState<number>(0);
+  const [activeMaintenanceCount, setActiveMaintenanceCount] = useState<number>(0);
+  const [expiringContractsCount, setExpiringContractsCount] = useState<number>(0);
+  const [activeTerminationsCount, setActiveTerminationsCount] = useState<number>(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState<number>(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -28,38 +33,39 @@ export function Layout() {
 
   useEffect(() => {
     if (!auth.currentUser) return;
-    const q = query(collection(db, 'maintenance'), where('landlordId', '==', auth.currentUser.uid), where('status', 'in', ['En attente', 'En cours']));
+    const uid = auth.currentUser.uid;
+
+    // Maintenance issues listener
+    const q = query(collection(db, 'maintenance'), where('landlordId', '==', uid));
     
-    const updateIssues = (snap: any) => {
+    const unsubMaintenance = onSnapshot(q, (snap) => {
+      const allMaint = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const activeTickets = allMaint.filter(m => ['En attente', 'Nouvelle', 'En cours', 'Devis soumis'].includes(m.status));
+      setActiveMaintenanceCount(activeTickets.length);
+
       const hidden = JSON.parse(localStorage.getItem('hiddenNotifications') || '[]');
       const now = new Date().getTime();
-      const oldIssues = snap.docs.map((d: any) => ({id: d.id, ...d.data()})).filter((issue: any) => {
+      const oldIssues = activeTickets.filter((issue: any) => {
         if (hidden.includes(issue.id)) return false;
-        const createdAt = new Date(issue.createdAt).getTime();
+        const createdAt = new Date(issue.createdAt || 0).getTime();
         const diffDays = (now - createdAt) / (1000 * 3600 * 24);
         return diffDays > 2;
       });
       setIssues(oldIssues);
-    };
-
-    const unsub = onSnapshot(q, updateIssues, (error) => {
+    }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'maintenance');
     });
-    
-    const handleStorageChange = () => {
-      // Small trick to force re-evaluation of localStorage when storage event is fired
-      getDocs(q).then(snap => updateIssues(snap)).catch(() => {});
-    };
-    window.addEventListener('storage', handleStorageChange);
 
-    const qPayments = query(collection(db, 'payments'), where('landlordId', '==', auth.currentUser.uid));
+    // Payments listener & Pending verification count
+    const qPayments = query(collection(db, 'payments'), where('landlordId', '==', uid));
     const unsubPayments = onSnapshot(qPayments, (snap) => {
-      // Only trigger notification if a true 'added' event happens after initial load.
-      // Firestore triggers 'added' for local cache initially. We can use .metadata.hasPendingWrites or just logic:
+      const allPay = snap.docs.map(d => d.data());
+      const pending = allPay.filter((p: any) => p.status === 'En attente' || p.status === 'pending_verification');
+      setPendingPaymentsCount(pending.length);
+
       snap.docChanges().forEach(async (change) => {
         if (change.type === 'added' && !initialLoadRef.current) {
           const payment = change.doc.data();
-          // Smart Notification "Paiement reçu de Jean (100$)"
           let tenantName = 'un locataire';
           try {
             const tenantRef = doc(db, 'tenants', payment.tenantId);
@@ -87,23 +93,54 @@ export function Layout() {
       handleFirestoreError(error, OperationType.LIST, 'payments');
     });
 
-    const qRadar = query(collection(db, 'radar_alerts'), where('landlordId', '==', auth.currentUser.uid), where('status', '==', 'active'));
+    // Contracts expiring in < 60 days
+    const qContracts = query(collection(db, 'contracts'), where('landlordId', '==', uid));
+    const unsubContracts = onSnapshot(qContracts, (snap) => {
+      const now = new Date();
+      const sixtyDaysFromNow = new Date(now.getTime() + 60 * 24 * 3600 * 1000);
+      const expiring = snap.docs.filter(d => {
+        const data = d.data();
+        if (data.status !== 'active' || !data.endDate) return false;
+        const end = new Date(data.endDate);
+        return end <= sixtyDaysFromNow;
+      });
+      setExpiringContractsCount(expiring.length);
+    }, () => {});
+
+    // Active lease terminations
+    const qTerminations = query(collection(db, 'termination_procedures'), where('landlordId', '==', uid));
+    const unsubTerminations = onSnapshot(qTerminations, (snap) => {
+      const active = snap.docs.filter(d => d.data().status !== 'Clôturée');
+      setActiveTerminationsCount(active.length);
+    }, () => {});
+
+    // Unread messages for this landlord
+    const qMessages = query(collection(db, 'messages'), where('recipientId', '==', uid), where('read', '==', false));
+    const unsubMessages = onSnapshot(qMessages, (snap) => {
+      setUnreadMessagesCount(snap.docs.length);
+    }, () => {});
+
+    // Radar alerts
+    const qRadar = query(collection(db, 'radar_alerts'), where('landlordId', '==', uid), where('status', '==', 'active'));
     const unsubRadar = onSnapshot(qRadar, (snap) => {
       setRadarCount(snap.docs.length);
     }, () => {});
 
-    const qNotifs = query(collection(db, 'notifications'), where('userId', '==', auth.currentUser.uid));
+    // Notifications
+    const qNotifs = query(collection(db, 'notifications'), where('userId', '==', uid));
     const unsubNotifs = onSnapshot(qNotifs, (snap) => {
       const unread = snap.docs.filter(d => !d.data().isRead && !d.data().isArchived).length;
       setUnreadNotifCount(unread);
     }, () => {});
 
     return () => {
-      unsub();
+      unsubMaintenance();
       unsubPayments();
+      unsubContracts();
+      unsubTerminations();
+      unsubMessages();
       unsubRadar();
       unsubNotifs();
-      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
 
@@ -112,11 +149,12 @@ export function Layout() {
     { to: '/properties', icon: Home, label: t('Properties') },
     { to: '/calendar', icon: CalendarIcon, label: t('Calendar', 'Calendrier') },
     { to: '/tenants', icon: Users, label: t('Tenants') },
-    { to: '/payments', icon: CreditCard, label: t('Payments') },
+    { to: '/payments', icon: CreditCard, label: t('Payments'), badge: pendingPaymentsCount, badgeColor: 'bg-emerald-600' },
     { to: '/expenses', icon: Receipt, label: t('Expenses') },
-    { to: '/maintenance', icon: Wrench, label: t('Maintenance') },
-    { to: '/contracts', icon: FileSignature, label: t('Contracts', 'Contrats') },
-    { to: '/terminations', icon: FileCheck2, label: 'Préavis & Clôtures' },
+    { to: '/maintenance', icon: Wrench, label: t('Maintenance'), badge: activeMaintenanceCount, badgeColor: 'bg-amber-600' },
+    { to: '/contracts', icon: FileSignature, label: t('Contracts', 'Contrats'), badge: expiringContractsCount, badgeColor: 'bg-blue-600' },
+    { to: '/terminations', icon: FileCheck2, label: 'Préavis & Clôtures', badge: activeTerminationsCount, badgeColor: 'bg-purple-600' },
+    { to: '/messages', icon: MessageSquare, label: 'Messages', badge: unreadMessagesCount, badgeColor: 'bg-rose-500' },
     { to: '/radar', icon: Radio, label: 'Radar', badge: radarCount, badgeColor: 'bg-cyan-500' },
     { to: '/notifications', icon: Bell, label: 'Notifications', badge: unreadNotifCount, badgeColor: 'bg-amber-500' },
     { to: '/reports', icon: FileText, label: t('Reports') },

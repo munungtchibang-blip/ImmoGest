@@ -939,8 +939,8 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
 
           <div className="space-y-3 pt-2">
             <button
-              onClick={() => navigate('/dashboard')}
-              className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+              onClick={() => { window.location.href = '/'; }}
+              className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 btn-interact"
             >
               <Building2 className="w-4 h-4" />
               Retourner à mon Espace Bailleur
@@ -949,7 +949,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
             <button
               onClick={async () => {
                 await auth.signOut();
-                window.location.reload();
+                window.location.href = '/';
               }}
               className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-xs transition-colors cursor-pointer"
             >

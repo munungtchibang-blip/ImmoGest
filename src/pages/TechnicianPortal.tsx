@@ -61,6 +61,17 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
   const [afterPhotos, setAfterPhotos] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Quote Submission Form state
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [quoteTarget, setQuoteTarget] = useState<any | null>(null);
+  const [quoteLaborCost, setQuoteLaborCost] = useState('');
+  const [quotePartsCost, setQuotePartsCost] = useState('');
+  const [quoteTravelCost, setQuoteTravelCost] = useState('');
+  const [quotePartsDescription, setQuotePartsDescription] = useState('');
+  const [quoteDiagnostic, setQuoteDiagnostic] = useState('');
+  const [quoteCurrency, setQuoteCurrency] = useState<'USD' | 'CDF'>('USD');
+  const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+
   const handleVerifyAccessCode = async (code: string) => {
     if (!code.trim()) return;
     setCodeChecking(true);
@@ -103,6 +114,9 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
     const userEmail = currentUser?.email || techSession?.email || '';
 
     if (!effectiveId && !techSession && !currentUser) {
+      setTimeout(() => {
+        setLoading(false);
+      }, 0);
       return;
     }
 
@@ -283,6 +297,60 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
     setPartsCost(item.partsCost ? String(item.partsCost) : '');
     setInterventionDuration(item.duration || '');
     setShowReportModal(true);
+  };
+
+  const openQuoteModal = (item: any) => {
+    setQuoteTarget(item);
+    setQuoteLaborCost(item.quote?.laborCost ? String(item.quote.laborCost) : '');
+    setQuotePartsCost(item.quote?.partsCost ? String(item.quote.partsCost) : '');
+    setQuoteTravelCost(item.quote?.travelCost ? String(item.quote.travelCost) : '');
+    setQuotePartsDescription(item.quote?.partsDescription || '');
+    setQuoteDiagnostic(item.quote?.diagnostic || '');
+    setQuoteCurrency(item.quote?.currency || 'USD');
+    setShowQuoteModal(true);
+  };
+
+  const handleSubmitQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quoteTarget) return;
+
+    const parts = Number(quotePartsCost) || 0;
+    const labor = Number(quoteLaborCost) || 0;
+    const travel = Number(quoteTravelCost) || 0;
+    const total = parts + labor + travel;
+
+    if (total <= 0) {
+      toast.error("Veuillez renseigner un montant pour le devis.");
+      return;
+    }
+
+    setQuoteSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'maintenance', quoteTarget.id), {
+        status: 'Devis soumis',
+        quote: {
+          partsCost: parts,
+          partsDescription: quotePartsDescription.trim(),
+          laborCost: labor,
+          travelCost: travel,
+          totalCost: total,
+          currency: quoteCurrency,
+          diagnostic: quoteDiagnostic.trim(),
+          submittedAt: new Date().toISOString(),
+          submittedBy: techSession?.name || currentUser?.displayName || 'Technicien'
+        },
+        estimatedCost: total,
+        updatedAt: new Date().toISOString()
+      });
+
+      toast.success(`Devis de ${total} ${quoteCurrency} soumis au bailleur avec succès !`);
+      setShowQuoteModal(false);
+    } catch (err: any) {
+      console.error("Erreur transmission devis:", err);
+      toast.error("Impossible de transmettre le devis.");
+    } finally {
+      setQuoteSubmitting(false);
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after') => {
@@ -712,6 +780,16 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
                               </button>
                             )}
 
+                            {(!item.status || ['Nouvelle', 'En attente', 'Acceptée', 'Devis soumis'].includes(item.status)) && (
+                              <button
+                                onClick={() => openQuoteModal(item)}
+                                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-xl text-xs font-bold border border-blue-200 dark:border-blue-700 cursor-pointer flex items-center gap-1 transition-all"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>{item.quote ? `Devis (${item.quote.totalCost} ${item.quote.currency || '$'})` : "Soumettre un devis"}</span>
+                              </button>
+                            )}
+
                             {item.status === 'Acceptée' && (
                               <button
                                 onClick={() => handleStartWork(item)}
@@ -1024,6 +1102,163 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
                   className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md cursor-pointer transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? 'Envoi...' : 'Transmettre & Clôturer'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quote Submission Modal */}
+      {showQuoteModal && quoteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 text-xs sm:text-sm border border-gray-100 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-gray-900 dark:text-white text-base">
+                    Devis de Réparation
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    Dossier #{quoteTarget.ticketNumber || quoteTarget.id.substring(0, 6).toUpperCase()} • {quoteTarget.propertyName || 'Bien locatif'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQuoteModal(false)}
+                className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitQuote} className="space-y-4">
+              <div>
+                <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Diagnostic technique préliminaire
+                </label>
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Ex: Fuite au niveau de la pipe d'évacuation WC, robinet d'arrêt bloqué..."
+                  value={quoteDiagnostic}
+                  onChange={e => setQuoteDiagnostic(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
+                  Détail des pièces et fournitures requises
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex: Pipe WC PVC 100, joint à lèvre, téflon, mastic sanitaire..."
+                  value={quotePartsDescription}
+                  onChange={e => setQuotePartsDescription(e.target.value)}
+                  className="w-full p-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-gray-900 dark:text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    Coût fournitures
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={quotePartsCost}
+                    onChange={e => setQuotePartsCost(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-gray-900 dark:text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    Main-d'œuvre
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={quoteLaborCost}
+                    onChange={e => setQuoteLaborCost(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-gray-900 dark:text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">
+                    Déplacement
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={quoteTravelCost}
+                    onChange={e => setQuoteTravelCost(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl outline-none text-gray-900 dark:text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 bg-blue-50 dark:bg-blue-900/30 rounded-2xl border border-blue-200 dark:border-blue-800">
+                <div>
+                  <span className="text-xs text-blue-900 dark:text-blue-200 font-bold">Devise du devis :</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setQuoteCurrency('USD')}
+                      className={`px-3 py-1 rounded-lg text-xs font-black transition-colors ${
+                        quoteCurrency === 'USD'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      USD ($)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuoteCurrency('CDF')}
+                      className={`px-3 py-1 rounded-lg text-xs font-black transition-colors ${
+                        quoteCurrency === 'CDF'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      CDF (Franc Congolais)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-black text-blue-700 dark:text-blue-300">Montant Total</span>
+                  <p className="text-xl font-black text-blue-900 dark:text-blue-100 font-mono">
+                    {(Number(quotePartsCost) || 0) + (Number(quoteLaborCost) || 0) + (Number(quoteTravelCost) || 0)}{' '}
+                    {quoteCurrency === 'USD' ? '$' : 'FC'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowQuoteModal(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-bold hover:bg-gray-50 cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={quoteSubmitting}
+                  className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md cursor-pointer transition-all disabled:opacity-50"
+                >
+                  {quoteSubmitting ? 'Transmission...' : 'Soumettre le devis au bailleur'}
                 </button>
               </div>
             </form>
