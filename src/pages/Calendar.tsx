@@ -371,8 +371,8 @@ export function Calendar() {
       )}
 
       {selectedEvent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Détails de l'événement</h2>
             
             <div className="space-y-3 mb-6">

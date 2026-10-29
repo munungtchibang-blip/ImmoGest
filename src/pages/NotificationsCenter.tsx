@@ -990,7 +990,7 @@ export function NotificationsCenter() {
 
       {/* Modal: Diffuser une notification manuelle / annonce */}
       {showBroadcastModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-xs">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 flex items-center justify-center p-4 z-50 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-lg w-full space-y-4 border border-gray-100 dark:border-gray-700 shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
               <div className="flex items-center gap-2.5">

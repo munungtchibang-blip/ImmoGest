@@ -161,7 +161,7 @@ export function SubscriptionModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs overflow-y-auto">
       <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-2xl w-full border border-gray-100 dark:border-gray-800 my-auto overflow-hidden transition-all">
         {/* Header */}
         <div className="relative bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-5 sm:p-6">
@@ -594,7 +594,7 @@ export function SubscriptionModal() {
 
       {/* Confirmation modal for cancellation */}
       {showCancelConfirm && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs">
           <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 border border-gray-100 dark:border-gray-700">
             <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
               <AlertTriangle className="w-6 h-6" />

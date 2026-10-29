@@ -699,8 +699,8 @@ export function Payments() {
 
       {/* Viewing Payment Detail Modal */}
       {viewingPayment && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center mb-5 border-b border-gray-100 dark:border-gray-700 pb-3">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-blue-600" />
@@ -794,7 +794,7 @@ export function Payments() {
 
       {/* Pro recommendation modal after payment */}
       {showPostPayModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-3">
               <CheckCircle2 className="w-7 h-7" />
@@ -1007,8 +1007,8 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full transition-colors my-6 border border-gray-100 dark:border-gray-700">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full transition-colors my-6 border border-gray-100 dark:border-gray-700">
         <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-blue-600" />
@@ -1246,8 +1246,8 @@ function CancelAdjustmentModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-700">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-700">
         <div className="flex items-center gap-3 text-purple-600 mb-3">
           <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center">
             <RotateCcw className="w-5 h-5" />
@@ -1324,8 +1324,8 @@ function DuplicateInspectionModal({
   onCancelPayment: (p: PaymentRecord) => void 
 }) {
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-gray-100 dark:border-gray-700">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-gray-100 dark:border-gray-700">
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2 text-amber-600">
             <AlertTriangle className="w-5 h-5" />

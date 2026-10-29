@@ -485,8 +485,8 @@ export function Maintenance() {
 
       {/* Confirmation modal delete */}
       {issueToDelete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Confirmer la suppression</h2>
             <p className="text-xs text-gray-600 dark:text-gray-400 mb-6">
               Êtes-vous sûr de vouloir supprimer ce dossier ? Cette action est irréversible.
@@ -651,8 +651,8 @@ function RespondModal({ issue, technicians, onClose }: { issue: any, technicians
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 transition-colors modal-enter">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 transition-colors modal-enter">
         <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1">
           Gestion de l'Intervention & Attribution
         </h2>
@@ -925,8 +925,8 @@ function CreateRepairModal({ properties, technicians, onClose }: { properties: a
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 transition-colors modal-enter">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 transition-colors modal-enter">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center">
@@ -1210,8 +1210,8 @@ function PayRepairModal({ issue, onClose }: { issue: any, onClose: () => void })
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl max-w-md w-full p-6 transition-colors modal-enter space-y-4">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 transition-colors modal-enter space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-emerald-600" />

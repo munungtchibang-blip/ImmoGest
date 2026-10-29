@@ -442,8 +442,8 @@ function EditPropertyModal({ property, onClose, onSaved }: { property: any, onCl
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full transition-colors overflow-y-auto max-h-[90vh]">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full transition-colors overflow-y-auto max-h-[90vh]">
         <div className="p-6 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Modifier le bien immobilier</h2>
         </div>

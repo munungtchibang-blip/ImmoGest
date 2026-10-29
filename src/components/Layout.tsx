@@ -432,8 +432,8 @@ export function Layout() {
       </nav>
 
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Confirmation</h2>
             <p className="text-gray-500 dark:text-gray-400 mb-6">Êtes-vous sûr de vouloir vous déconnecter ?</p>
             <div className="flex gap-3">

@@ -404,7 +404,7 @@ export function Dashboard() {
         title: `Loyer en retard : ${t.name}`,
         desc: `${t.monthlyRent} $ attendus • ${t.propertyAddress || t.address || 'Logement'}`,
         badge: 'Retard de loyer',
-        actionLabel: 'Rappel WhatsApp',
+        actionLabel: 'Dossier',
         onAction: () => sendWhatsAppReminder(t),
         link: `/tenants/${t.id}`
       });

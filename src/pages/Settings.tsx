@@ -440,8 +440,8 @@ export function Settings() {
       {showProfileModal && <ProfileModal onClose={() => setShowProfileModal(false)} />}
 
       {showLogoutModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Déconnexion</h2>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
               Êtes-vous sûr de vouloir vous déconnecter ?
@@ -465,8 +465,8 @@ export function Settings() {
       )}
 
       {showClearDataModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 transition-colors">
             <div className="flex items-center gap-3 text-red-600 mb-4">
               <AlertTriangle className="w-8 h-8" />
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Vider l'application</h2>
@@ -497,8 +497,8 @@ export function Settings() {
       )}
 
       {showMobileMoneyModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Choisir le fournisseur</h2>
             <div className="space-y-3 mb-6">
               {['M-Pesa', 'Orange Money', 'Airtel Money', 'Afrimoney'].map(provider => (
@@ -561,8 +561,8 @@ export function Settings() {
       )}
 
       {showBankModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Choisir la banque</h2>
             <div className="space-y-3 mb-6">
               {['Equity BCDC', 'Rawbank', 'Ecobank', 'TMB', 'Access Bank'].map(provider => (

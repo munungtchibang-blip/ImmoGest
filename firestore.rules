@@ -382,5 +382,15 @@ service cloud.firestore {
       allow create, update: if true;
       allow delete: if isAuthenticated();
     }
+
+    match /messages/{messageId} {
+      allow read, create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /email_verifications/{verificationId} {
+      allow read, create, update: if true;
+      allow delete: if isAuthenticated();
+    }
   }
 }

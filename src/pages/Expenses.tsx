@@ -251,7 +251,7 @@ export function Expenses() {
 
       {/* Pro Recommendation Modal triggered when clicking Nouvelle Dépense on basic plans */}
       {showProRecommendModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-3">
               <Sparkles className="w-6 h-6" />
@@ -288,8 +288,8 @@ export function Expenses() {
       )}
 
       {expenseToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2">Supprimer la dépense</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">Êtes-vous sûr de vouloir supprimer cette dépense ?</p>
             <div className="flex gap-3">
@@ -386,8 +386,8 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl max-w-md w-full p-6 transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 transition-colors">
         <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-base font-bold text-gray-900 dark:text-white">Nouvelle dépense</h2>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full">

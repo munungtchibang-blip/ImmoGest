@@ -500,13 +500,7 @@ export function TenantDetail() {
               <span>Email (Gmail)</span>
             </button>
 
-            <button
-              onClick={() => setShowPortalLinkModal(true)}
-              className="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 px-3.5 py-2.5 rounded-xl font-semibold text-xs transition-colors btn-interact"
-            >
-              <Smartphone className="w-4 h-4" />
-              <span>Espace Locataire</span>
-            </button>
+
 
             <button
               onClick={() => setShowPaymentForm(true)}
@@ -933,8 +927,8 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 transition-colors relative modal-enter space-y-4">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 sm:p-7 transition-colors relative modal-enter space-y-4">
         <button 
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
@@ -1034,8 +1028,8 @@ function PortalLinkModal({ tenant, onClose }: { tenant: any, onClose: () => void
 
 function ConfirmModal({ title, message, onConfirm, onCancel }: { title: string, message: string, onConfirm: () => void, onCancel: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{title}</h2>
         <p className="text-gray-500 dark:text-gray-400 mb-6">{message}</p>
         <div className="flex gap-3">
@@ -1067,8 +1061,8 @@ function DeductGuaranteeModal({ tenant, onConfirm, onCancel }: { tenant: any, on
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Déduire de la garantie</h2>
         <p className="text-gray-500 dark:text-gray-400 mb-4 text-sm">Garantie actuelle : {tenant.guaranteeAmount} $</p>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1216,8 +1210,8 @@ function AddPaymentModal({ tenant, onClose }: { tenant: any, onClose: () => void
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full transition-colors">
         <div className="p-6 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Nouveau Paiement</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Pour {tenant.name}</p>
@@ -1281,8 +1275,8 @@ function RestoreGuaranteeModal({ tenant, onConfirm, onCancel }: { tenant: any, o
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
         <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Restaurer la garantie</h2>
         <p className="text-gray-500 dark:text-gray-400 mb-4 text-sm">Garantie actuelle : {tenant.guaranteeAmount} $</p>
         <form onSubmit={handleSubmit}>
@@ -1374,8 +1368,8 @@ function EditTenantModal({ tenant, onClose }: { tenant: any, onClose: () => void
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-2xl w-full my-8 transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-2xl w-full my-8 transition-colors">
         <div className="p-6 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Modifier le locataire</h2>
         </div>
@@ -1606,8 +1600,8 @@ function EditPaymentModal({ payment, onClose }: { payment: any, onClose: () => v
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full transition-colors">
         <div className="p-6 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Modifier le paiement</h2>
         </div>

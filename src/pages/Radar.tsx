@@ -589,7 +589,7 @@ export function Radar() {
 
       {/* Modal: Paramètres et seuils Radar */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-xs">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 flex items-center justify-center p-4 z-50 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-lg w-full space-y-5 border border-gray-100 dark:border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
               <div className="flex items-center gap-2.5">
@@ -748,7 +748,7 @@ export function Radar() {
 
       {/* Modal: Résoudre Alerte avec commentaire */}
       {resolvingAlert && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-xs">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 flex items-center justify-center p-4 z-50 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-sm w-full space-y-4 border border-gray-100 dark:border-gray-700 shadow-2xl">
             <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6" />

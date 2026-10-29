@@ -343,8 +343,8 @@ export function Tenants() {
       )}
 
       {tenantToDelete && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-sm w-full p-6 transition-colors">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6 transition-colors">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Supprimer le locataire</h2>
             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-6">
               Êtes-vous sûr de vouloir supprimer ce locataire ? Cette action est irréversible et supprimera également l'accès à son historique.
@@ -400,7 +400,7 @@ function TenantAccessDispatchModal({ info, onClose }: { info: TenantDispatchInfo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between pb-4 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-3">
@@ -691,8 +691,8 @@ function AddTenantModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto transition-colors">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full max-h-[90vh] overflow-y-auto transition-colors">
         <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">Nouveau Locataire</h2>
           <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full">

@@ -15,19 +15,21 @@ import {
   Search, 
   FileCheck2,
   PackageCheck,
-  ArrowRight
+  ArrowRight,
+  MessageSquare
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { PhotoModal } from '../components/PhotoModal';
+import { Messages } from './Messages';
 
 interface TechnicianPortalProps {
   onSwitchRole?: () => void;
 }
 
 export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
-  const [activeTab, setActiveTab] = useState<'tasks' | 'history' | 'calendar' | 'account'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'history' | 'calendar' | 'account' | 'chat'>('tasks');
   const [interventions, setInterventions] = useState<any[]>([]);
   const [techProcedures, setTechProcedures] = useState<any[]>([]);
   const currentUser = auth.currentUser;
@@ -554,6 +556,18 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
             <Building2 className="w-4 h-4" />
             <span>Mon Profil</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`py-3 px-3 text-xs sm:text-sm font-extrabold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'chat'
+                ? 'border-amber-600 text-amber-600 dark:text-amber-400 dark:border-amber-400'
+                : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>Chat Bailleur</span>
+          </button>
         </div>
       </header>
 
@@ -980,14 +994,43 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
           </div>
         )}
 
+        {/* ======================================================== */}
+        {/* TAB: CHAT DIRECT AVEC LE GESTIONNAIRE / BAILLEUR */}
+        {/* ======================================================== */}
+        {activeTab === 'chat' && (
+          <div className="space-y-4 tab-enter">
+            <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 sm:p-6 card-enter">
+              <div className="flex items-center gap-2.5 pb-3 mb-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-gray-900 dark:text-white">Messagerie Gestionnaire & Travaux</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Échangez en direct avec la direction immobilière</p>
+                </div>
+              </div>
+              <Messages
+                embeddedMode="technician"
+                technicianInfo={{
+                  id: techSession?.id || currentUser?.uid || 'technician',
+                  name: techSession?.name || currentUser?.displayName || 'Technicien',
+                  landlordId: techSession?.landlordId || interventions[0]?.landlordId || 'landlord',
+                  phone: techSession?.phone,
+                  specialty: techSession?.specialty
+                }}
+              />
+            </div>
+          </div>
+        )}
+
       </main>
 
       {/* ======================================================== */}
       {/* MODAL: RAPPORT D'INTERVENTION TECHNICIEN */}
       {/* ======================================================== */}
       {showReportModal && selectedIntervention && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 tab-enter">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4 tab-enter">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-600">Rapport Technique</span>
@@ -1111,7 +1154,7 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
 
       {/* Quote Submission Modal */}
       {showQuoteModal && quoteTarget && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 text-xs sm:text-sm border border-gray-100 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">
               <div className="flex items-center gap-2">

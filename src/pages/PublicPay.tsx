@@ -42,6 +42,7 @@ import {
   calculateNoticeEndDate,
   TerminationProcedure 
 } from '../services/terminationEngine';
+import { Messages } from './Messages';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import toast from 'react-hot-toast';
@@ -284,7 +285,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const [isLandlordBlocked, setIsLandlordBlocked] = useState(false);
   const [showPhoto, setShowPhoto] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'contract' | 'report' | 'notifications' | 'account'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'contract' | 'report' | 'notifications' | 'account' | 'chat'>('dashboard');
   const [notifications, setNotifications] = useState<any[]>([]);
 
   // Payment Form States
@@ -2328,8 +2329,8 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
 
         {/* MODAL: FORMULAIRE DE PRÉAVIS DE DÉPART */}
         {showNoticeModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 tab-enter">
+          <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-md w-full space-y-4 tab-enter shadow-2xl border border-gray-100 dark:border-gray-700">
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
@@ -2607,6 +2608,36 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
         )}
 
         {/* ======================================================== */}
+        {/* TAB: CHAT DIRECT AVEC LE BAILLEUR */}
+        {/* ======================================================== */}
+        {activeTab === 'chat' && (
+          <div className="space-y-4 tab-enter">
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-4 sm:p-6 card-enter">
+              <div className="flex items-center gap-2.5 pb-3 mb-4 border-b border-gray-100">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black text-gray-900">Messagerie Directe Bailleur</h2>
+                  <p className="text-xs text-gray-500">Échangez en direct et en toute confidentialité</p>
+                </div>
+              </div>
+              <Messages
+                embeddedMode="tenant"
+                tenantInfo={{
+                  id: tenant.id,
+                  name: tenant.name,
+                  landlordId: tenant.landlordId,
+                  address: tenant.address,
+                  phone: tenant.phone,
+                  email: tenant.email
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ======================================================== */}
         {/* TAB 5: ESPACE COMPTE (MODERNISÉ AVEC SÉCURITÉ & SUPPRESSION) */}
         {/* ======================================================== */}
         {activeTab === 'account' && (
@@ -2765,8 +2796,8 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
 
         {/* Modal: Delete Tenant Account Confirmation */}
         {showDeleteAccountModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 text-center">
+          <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 max-w-sm w-full space-y-4 text-center shadow-2xl border border-gray-100 dark:border-gray-700">
               <div className="w-14 h-14 bg-rose-100 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
                 <Trash2 className="w-7 h-7" />
               </div>
@@ -2871,6 +2902,16 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
             )}
           </div>
           <span className="text-[9px] uppercase font-bold tracking-tight">Alertes</span>
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('chat')} 
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'chat' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <MessageSquare className="w-5 h-5" />
+          <span className="text-[9px] uppercase font-bold tracking-tight">Chat</span>
         </button>
 
         <button 

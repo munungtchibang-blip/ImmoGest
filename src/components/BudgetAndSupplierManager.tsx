@@ -455,8 +455,8 @@ function BudgetModal({ properties, existing, onClose }: { properties: any[], exi
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6 border border-gray-100 dark:border-gray-700">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-sm w-full p-6">
         <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700 mb-4">
           <h3 className="font-bold text-gray-900 dark:text-white text-base">
             Fixer un Plafond Budgétaire
@@ -587,8 +587,8 @@ function SupplierModal({ existing, onClose }: { existing: Supplier | null, onClo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-700 my-8">
+    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 my-8">
         <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700 mb-4">
           <h3 className="font-bold text-gray-900 dark:text-white text-base">
             {existing ? 'Modifier le Fournisseur' : 'Nouveau Fournisseur / Prestataire'}

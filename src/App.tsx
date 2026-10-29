@@ -442,25 +442,33 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       const res = await loginWithGoogle();
       if (res && res.user) {
         const u = res.user;
-        const userDoc = await getDoc(doc(db, 'users', u.uid));
-        if (!userDoc.exists()) {
-          const q = query(collection(db, 'tenants'), where('email', '==', u.email));
-          const snaps = await getDocs(q);
-          let role = 'landlord';
-          let tid = null;
-          if (!snaps.empty) {
-            role = 'tenant';
-            tid = snaps.docs[0].id;
+        try {
+          const userDoc = await getDoc(doc(db, 'users', u.uid));
+          if (!userDoc.exists()) {
+            let role = 'landlord';
+            let tid: string | null = null;
+            if (u.email) {
+              const cleanMail = u.email.trim().toLowerCase();
+              const q = query(collection(db, 'tenants'), where('email', '==', cleanMail));
+              const snaps = await getDocs(q);
+              if (!snaps.empty) {
+                role = 'tenant';
+                tid = snaps.docs[0].id;
+              }
+            }
+            await setDoc(doc(db, 'users', u.uid), {
+              name: u.displayName || 'Utilisateur',
+              phone: '',
+              email: (u.email || '').toLowerCase(),
+              googleEmail: u.email || '',
+              role,
+              ...(tid ? { tenantId: tid } : {}),
+              isVerified: true,
+              createdAt: new Date().toISOString()
+            }, { merge: true });
           }
-          await setDoc(doc(db, 'users', u.uid), {
-            name: u.displayName || 'Utilisateur',
-            phone: '',
-            email: u.email,
-            googleEmail: u.email,
-            role,
-            ...(tid ? { tenantId: tid } : {}),
-            createdAt: new Date().toISOString()
-          });
+        } catch (dbErr) {
+          console.warn("Mise à jour Firestore utilisateur Google :", dbErr);
         }
         toast.success("Connexion Google réussie !");
         onSuccess();
@@ -474,6 +482,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     } finally {
       setLoading(false);
     }
+
   };
 
   return (
