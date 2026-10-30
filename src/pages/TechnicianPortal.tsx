@@ -122,7 +122,13 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
       return;
     }
 
-    const q = query(collection(db, 'maintenance'));
+    // Scope query by landlordId if available, or by assignedTechnicianId to avoid full database scans
+    const q = techSession?.landlordId
+      ? query(collection(db, 'maintenance'), where('landlordId', '==', techSession.landlordId))
+      : effectiveId
+      ? query(collection(db, 'maintenance'), where('assignedTechnicianId', '==', effectiveId))
+      : query(collection(db, 'maintenance'));
+
     const unsub = onSnapshot(q, (snapshot) => {
       const allDocs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       
@@ -144,7 +150,12 @@ export function TechnicianPortal({ onSwitchRole }: TechnicianPortalProps = {}) {
       setLoading(false);
     });
 
-    const qProc = query(collection(db, 'termination_procedures'));
+    const qProc = techSession?.landlordId
+      ? query(collection(db, 'termination_procedures'), where('landlordId', '==', techSession.landlordId))
+      : effectiveId
+      ? query(collection(db, 'termination_procedures'), where('technicianId', '==', effectiveId))
+      : query(collection(db, 'termination_procedures'));
+
     const unsubProc = onSnapshot(qProc, (pSnap) => {
       const allProc = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const matching = allProc.filter((p: any) => 

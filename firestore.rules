@@ -296,6 +296,13 @@ service cloud.firestore {
       allow delete: if isAuthenticated();
     }
 
+    match /payment_proofs/{proofId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if isAuthenticated();
+    }
+
     match /subscription_invoices/{invoiceId} {
       allow read: if true;
       allow create: if true;

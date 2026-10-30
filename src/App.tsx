@@ -443,30 +443,54 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       if (res && res.user) {
         const u = res.user;
         try {
-          const userDoc = await getDoc(doc(db, 'users', u.uid));
-          if (!userDoc.exists()) {
-            let role = 'landlord';
-            let tid: string | null = null;
-            if (u.email) {
-              const cleanMail = u.email.trim().toLowerCase();
-              const q = query(collection(db, 'tenants'), where('email', '==', cleanMail));
-              const snaps = await getDocs(q);
-              if (!snaps.empty) {
+          const userDocRef = doc(db, 'users', u.uid);
+          const userDoc = await getDoc(userDocRef);
+          const cleanMail = (u.email || '').trim().toLowerCase();
+          
+          let role = userDoc.exists() ? userDoc.data().role : null;
+          let tid: string | null = userDoc.exists() ? userDoc.data().tenantId : null;
+          let techId: string | null = userDoc.exists() ? userDoc.data().technicianId : null;
+
+          // If no role or previously defaulted to landlord, check real identity in collections
+          if (!role || role === 'landlord') {
+            if (cleanMail) {
+              // 1. Check if user is an existing tenant
+              const qTenant = query(collection(db, 'tenants'), where('email', '==', cleanMail));
+              const snapTenant = await getDocs(qTenant);
+              if (!snapTenant.empty) {
                 role = 'tenant';
-                tid = snaps.docs[0].id;
+                tid = snapTenant.docs[0].id;
+                await updateDoc(doc(db, 'tenants', tid), {
+                  userId: u.uid,
+                  accountActivated: true
+                }).catch(console.warn);
+              } else {
+                // 2. Check if user is an existing technician
+                const qTech = query(collection(db, 'technicians'), where('email', '==', cleanMail));
+                const snapTech = await getDocs(qTech);
+                if (!snapTech.empty) {
+                  role = 'technician';
+                  techId = snapTech.docs[0].id;
+                  await updateDoc(doc(db, 'technicians', techId), {
+                    userId: u.uid,
+                    accountActivated: true
+                  }).catch(console.warn);
+                }
               }
             }
-            await setDoc(doc(db, 'users', u.uid), {
-              name: u.displayName || 'Utilisateur',
-              phone: '',
-              email: (u.email || '').toLowerCase(),
-              googleEmail: u.email || '',
-              role,
-              ...(tid ? { tenantId: tid } : {}),
-              isVerified: true,
-              createdAt: new Date().toISOString()
-            }, { merge: true });
           }
+
+          await setDoc(userDocRef, {
+            name: u.displayName || 'Utilisateur',
+            phone: u.phoneNumber || '',
+            email: cleanMail,
+            googleEmail: cleanMail,
+            role: role || 'landlord',
+            ...(tid ? { tenantId: tid } : {}),
+            ...(techId ? { technicianId: techId } : {}),
+            isVerified: true,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
         } catch (dbErr) {
           console.warn("Mise à jour Firestore utilisateur Google :", dbErr);
         }
@@ -967,10 +991,14 @@ export default function App() {
              setRole(currentRole);
              if (currentRole === 'tenant') setTenantId(currentTenantId);
           } else {
-             // Check if email or phone matches any tenant
+             // User document does not exist yet: Resolve role accurately from collections
              let tid = null;
-             if (currentUser.email) {
-                 const qEmail = query(collection(db, 'tenants'), where('email', '==', currentUser.email));
+             let techId = null;
+             const cleanMail = (currentUser.email || '').trim().toLowerCase();
+
+             // 1. Check tenants
+             if (cleanMail) {
+                 const qEmail = query(collection(db, 'tenants'), where('email', '==', cleanMail));
                  const snapEmail = await getDocs(qEmail);
                  if (!snapEmail.empty) tid = snapEmail.docs[0].id;
              }
@@ -979,9 +1007,21 @@ export default function App() {
                  const snapPhone = await getDocs(qPhone);
                  if (!snapPhone.empty) tid = snapPhone.docs[0].id;
              }
+
+             // 2. Check technicians
+             if (!tid && cleanMail) {
+                 const qTechEmail = query(collection(db, 'technicians'), where('email', '==', cleanMail));
+                 const snapTechEmail = await getDocs(qTechEmail);
+                 if (!snapTechEmail.empty) techId = snapTechEmail.docs[0].id;
+             }
+             if (!tid && !techId && currentUser.phoneNumber) {
+                 const qTechPhone = query(collection(db, 'technicians'), where('phone', '==', currentUser.phoneNumber));
+                 const snapTechPhone = await getDocs(qTechPhone);
+                 if (!snapTechPhone.empty) techId = snapTechPhone.docs[0].id;
+             }
              
-             // If still no tid, check if they are visiting a specific tenant portal URL to link them
-             if (!tid) {
+             // 3. Link via visiting portal URL
+             if (!tid && !techId) {
                  const match = window.location.pathname.match(/^\/pay\/(.+)$/);
                  if (match) {
                      const urlTenantId = match[1];
@@ -989,10 +1029,9 @@ export default function App() {
                          const tDoc = await getDoc(doc(db, 'tenants', urlTenantId));
                          if (tDoc.exists()) {
                              const tData = tDoc.data();
-                             // Link the user to this tenant if they visited this specific URL
                              tid = urlTenantId;
                              await updateDoc(doc(db, 'tenants', urlTenantId), {
-                                 email: currentUser.email || tData.email || '',
+                                 email: cleanMail || tData.email || '',
                                  userId: currentUser.uid
                              });
                          }
@@ -1006,20 +1045,31 @@ export default function App() {
                await setDoc(doc(db, 'users', currentUser.uid), {
                  name: currentUser.displayName || 'Locataire',
                  phone: currentUser.phoneNumber || '',
-                 email: currentUser.email || '',
-                 googleEmail: currentUser.email || '',
+                 email: cleanMail,
+                 googleEmail: cleanMail,
                  role: 'tenant',
                  tenantId: tid,
                  createdAt: new Date().toISOString()
                });
                setRole('tenant');
                setTenantId(tid);
+             } else if (techId) {
+               await setDoc(doc(db, 'users', currentUser.uid), {
+                 name: currentUser.displayName || 'Technicien',
+                 phone: currentUser.phoneNumber || '',
+                 email: cleanMail,
+                 googleEmail: cleanMail,
+                 role: 'technician',
+                 technicianId: techId,
+                 createdAt: new Date().toISOString()
+               });
+               setRole('technician');
              } else {
                await setDoc(doc(db, 'users', currentUser.uid), {
-                 name: currentUser.displayName || 'Utilisateur',
+                 name: currentUser.displayName || 'Bailleur',
                  phone: currentUser.phoneNumber || '',
-                 email: currentUser.email || '',
-                 googleEmail: currentUser.email || '',
+                 email: cleanMail,
+                 googleEmail: cleanMail,
                  role: 'landlord',
                  createdAt: new Date().toISOString()
                });

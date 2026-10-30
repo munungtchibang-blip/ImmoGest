@@ -44,6 +44,7 @@ export function Dashboard() {
   const [contracts, setContracts] = useState<any[]>([]);
   const [maintenanceIssues, setMaintenanceIssues] = useState<any[]>([]);
   const [technicians, setTechnicians] = useState<any[]>([]);
+  const [pendingPaymentProofs, setPendingPaymentProofs] = useState<any[]>([]);
   const [actionFilter, setActionFilter] = useState<'all' | 'urgent' | 'contracts' | 'maintenance' | 'invitations' | 'payments'>('all');
   const [stats, setStats] = useState({
     totalTenants: 0,
@@ -181,6 +182,13 @@ export function Dashboard() {
       setCriticalRadarCount(crit);
     }, () => {});
 
+    // Listen to payment proofs awaiting verification
+    const qProofs = query(collection(db, 'payment_proofs'), where('landlordId', '==', uid));
+    const unsubProofs = onSnapshot(qProofs, (snapshot) => {
+      const proofsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter((x: any) => x.status === 'En attente de vérification' || x.status === 'En cours de vérification');
+      setPendingPaymentProofs(proofsList);
+    }, () => {});
+
     return () => {
       unsubTenants();
       unsubProperties();
@@ -190,6 +198,7 @@ export function Dashboard() {
       unsubContracts();
       unsubExpenses();
       unsubRadar();
+      unsubProofs();
     };
   }, []);
 
@@ -295,6 +304,20 @@ export function Dashboard() {
       onAction?: () => void;
       link?: string;
     }> = [];
+
+    // 0. Pending Payment Proofs to Verify
+    pendingPaymentProofs.forEach(proof => {
+      items.push({
+        id: `proof_${proof.id}`,
+        priority: 'urgent',
+        type: 'payment',
+        title: `Preuve de paiement reçue : ${proof.tenantName || 'Locataire'} (${proof.amount} ${proof.currency || '$'})`,
+        desc: `Versement pour ${proof.paymentType || 'Loyer'} via ${proof.paymentMethod || 'Mobile Money'} (Réf: ${proof.transactionReference || 'N/A'}) - À contrôler et valider`,
+        badge: 'Preuve à vérifier',
+        actionLabel: 'Examiner la preuve',
+        link: '/payments'
+      });
+    });
 
     // 1. Expiring Contracts (Within 60 days) or already expired
     const in60Days = addDays(new Date(), 60);
@@ -425,7 +448,7 @@ export function Dashboard() {
     });
 
     return items;
-  }, [contracts, maintenanceIssues, tenants, technicians, lateTenants, unoccupiedStatus]);
+  }, [contracts, maintenanceIssues, tenants, technicians, lateTenants, unoccupiedStatus, pendingPaymentProofs]);
 
   const filteredActionItems = useMemo(() => {
     if (actionFilter === 'all') return actionItems;

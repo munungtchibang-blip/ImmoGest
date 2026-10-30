@@ -7,6 +7,7 @@ import {
   addDoc, 
   serverTimestamp, 
   getDocs,
+  getDoc,
   updateDoc,
   doc
 } from 'firebase/firestore';
@@ -103,9 +104,20 @@ export function Messages({ embeddedMode, tenantInfo, technicianInfo }: MessagesP
       try {
         if (isTenantMode) {
           // Tenant chats with their landlord
-          const landlordContactId = tenantInfo?.landlordId || 'landlord';
+          let landlordContactId = tenantInfo?.landlordId;
+          if ((!landlordContactId || landlordContactId === 'landlord') && tenantInfo?.id) {
+            try {
+              const tSnap = await getDoc(doc(db, 'tenants', tenantInfo.id));
+              if (tSnap.exists() && tSnap.data().landlordId) {
+                landlordContactId = tSnap.data().landlordId;
+              }
+            } catch (err) {
+              console.warn("Could not retrieve landlordId from tenant doc:", err);
+            }
+          }
+
           const defaultLandlordContact: Contact = {
-            id: landlordContactId,
+            id: landlordContactId || 'landlord',
             name: 'Bailleur / Direction Immobilière',
             role: 'landlord',
             propertyAddress: tenantInfo?.address || 'Kinshasa'
@@ -201,13 +213,8 @@ export function Messages({ embeddedMode, tenantInfo, technicianInfo }: MessagesP
     // Unique deterministic conversation key between both parties
     const conversationId = [senderId, selectedContact.id].sort().join('_');
 
-    const q = query(
-      collection(db, 'messages'),
-      where('conversationId', '==', conversationId)
-    );
-
-    const unsub = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(d => ({
+    const handleDocs = (docsList: any[]) => {
+      const msgs = docsList.map(d => ({
         id: d.id,
         ...d.data()
       })) as MessageItem[];
@@ -222,7 +229,7 @@ export function Messages({ embeddedMode, tenantInfo, technicianInfo }: MessagesP
       setMessages(msgs);
 
       // Auto-mark unread incoming messages as read
-      snapshot.docs.forEach(async (d) => {
+      docsList.forEach(async (d) => {
         const data = d.data();
         if (data.recipientId === senderId && !data.read) {
           try {
@@ -232,12 +239,33 @@ export function Messages({ embeddedMode, tenantInfo, technicianInfo }: MessagesP
           }
         }
       });
-    }, (err) => {
-      console.warn("Synchro messages live notice:", err);
-    });
+    };
 
-    return () => unsub();
-  }, [selectedContact, senderId]);
+    if (isTenantMode && tenantInfo?.id) {
+      // In tenant mode, listen directly for all messages linked to this tenant
+      const qTenant = query(
+        collection(db, 'messages'),
+        where('tenantId', '==', tenantInfo.id)
+      );
+      const unsub = onSnapshot(qTenant, (snapshot) => {
+        handleDocs(snapshot.docs);
+      }, (err) => {
+        console.warn("Synchro messages tenant live notice:", err);
+      });
+      return () => unsub();
+    } else {
+      const q = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', conversationId)
+      );
+      const unsub = onSnapshot(q, (snapshot) => {
+        handleDocs(snapshot.docs);
+      }, (err) => {
+        console.warn("Synchro messages live notice:", err);
+      });
+      return () => unsub();
+    }
+  }, [selectedContact, senderId, isTenantMode, tenantInfo?.id]);
 
   // Scroll to bottom whenever messages update
   useEffect(() => {
@@ -263,6 +291,13 @@ export function Messages({ embeddedMode, tenantInfo, technicianInfo }: MessagesP
     const conversationId = [senderId, selectedContact.id].sort().join('_');
 
     try {
+      const resolvedTenantId = isTenantMode 
+        ? (tenantInfo?.id || senderId) 
+        : (selectedContact.role === 'tenant' ? selectedContact.id : null);
+      const resolvedLandlordId = isTenantMode 
+        ? selectedContact.id 
+        : (senderRole === 'landlord' ? senderId : null);
+
       await addDoc(collection(db, 'messages'), {
         conversationId,
         senderId,
@@ -271,6 +306,9 @@ export function Messages({ embeddedMode, tenantInfo, technicianInfo }: MessagesP
         recipientId: selectedContact.id,
         recipientName: selectedContact.name,
         recipientRole: selectedContact.role,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+        ...(resolvedLandlordId ? { landlordId: resolvedLandlordId } : {}),
+        participantIds: [senderId, selectedContact.id],
         text: textToSend,
         createdAt: serverTimestamp(),
         read: false,

@@ -43,6 +43,7 @@ import {
   TerminationProcedure 
 } from '../services/terminationEngine';
 import { Messages } from './Messages';
+import { PaymentProofUpload } from '../components/PaymentProofUpload';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import toast from 'react-hot-toast';
@@ -285,7 +286,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const [isLandlordBlocked, setIsLandlordBlocked] = useState(false);
   const [showPhoto, setShowPhoto] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'history' | 'contract' | 'report' | 'notifications' | 'account' | 'chat'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'pay' | 'proofs' | 'history' | 'contract' | 'report' | 'notifications' | 'account' | 'chat'>('dashboard');
   const [notifications, setNotifications] = useState<any[]>([]);
 
   // Payment Form States
@@ -1063,6 +1064,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
           {[
             { id: 'dashboard', label: 'Tableau de bord', icon: Building2 },
             { id: 'pay', label: 'Régler Loyer', icon: CreditCard },
+            { id: 'proofs', label: 'Mes Preuves', icon: ShieldCheck },
             { id: 'history', label: 'Quittances & Historique', icon: History },
             { id: 'contract', label: 'Mon Contrat', icon: FileSignature },
             { id: 'report', label: 'Mes Réparations', icon: Wrench },
@@ -1302,6 +1304,25 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                   <Wrench className="w-4 h-4" />
                 </div>
                 <p className="font-bold text-gray-900 text-xs">Incident</p>
+              </button>
+            </div>
+
+            {/* Mes Preuves de Paiement CTA Banner */}
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-4 sm:p-5 rounded-3xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm sm:text-base">Mes preuves de paiement</h4>
+                  <p className="text-xs text-emerald-100">Transmettez vos reçus bancaires ou captures Mobile Money pour vérification.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveTab('proofs')}
+                className="px-4 py-2 bg-white text-emerald-800 hover:bg-emerald-50 font-bold text-xs rounded-xl transition shadow-sm self-start sm:self-auto cursor-pointer"
+              >
+                Gérer mes preuves
               </button>
             </div>
 
@@ -1731,6 +1752,31 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB: MES PREUVES DE PAIEMENT */}
+        {/* ======================================================== */}
+        {activeTab === 'proofs' && tenant && (
+          <div className="tab-enter">
+            <PaymentProofUpload
+              tenant={{
+                id: tenant.id,
+                name: tenant.name,
+                email: tenant.email,
+                phone: tenant.phone,
+                landlordId: tenant.landlordId,
+                propertyId: tenant.propertyId,
+                propertyName: tenant.propertyName || tenant.address,
+                unitNumber: tenant.unitNumber,
+                rentAmount: tenant.monthlyRent,
+                currency: tenant.currency || 'USD'
+              }}
+              onProofSubmitted={() => {
+                // Keep on proofs view so tenant can see the submitted record
+              }}
+            />
           </div>
         )}
 
@@ -2855,6 +2901,16 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
         >
           <CreditCard className="w-5 h-5" />
           <span className="text-[9px] uppercase font-bold tracking-tight">Payer</span>
+        </button>
+
+        <button 
+          onClick={() => setActiveTab('proofs')} 
+          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${
+            activeTab === 'proofs' ? 'text-indigo-600 font-bold scale-105' : 'text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <ShieldCheck className="w-5 h-5" />
+          <span className="text-[9px] uppercase font-bold tracking-tight">Preuves</span>
         </button>
 
         <button 

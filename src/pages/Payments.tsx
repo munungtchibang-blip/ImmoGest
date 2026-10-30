@@ -15,12 +15,15 @@ import {
   Clock, 
   Ban, 
   Check, 
-  Smartphone
+  Smartphone,
+  ShieldCheck
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import { useSubscription } from '../context/SubscriptionContext';
+import { LandlordPaymentProofs } from '../components/LandlordPaymentProofs';
 import toast from 'react-hot-toast';
 import { 
   DEFAULT_CURRENCY_CONFIG, 
@@ -50,7 +53,7 @@ export function Payments() {
   const [duplicateInspection, setDuplicateInspection] = useState<PaymentRecord[] | null>(null);
 
   // Status Filter Tabs
-  const [activeTab, setActiveTab] = useState<'all' | 'confirmed' | 'pending' | 'disputed' | 'unpaid' | 'adjustments'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'confirmed' | 'pending' | 'proofs' | 'disputed' | 'unpaid' | 'adjustments'>('all');
 
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -395,6 +398,18 @@ export function Payments() {
         </button>
 
         <button
+          onClick={() => setActiveTab('proofs')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            activeTab === 'proofs'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Preuves Reçues</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('unpaid')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
             activeTab === 'unpaid'
@@ -497,6 +512,13 @@ export function Payments() {
         <div className="animate-pulse space-y-3">
           {[1, 2, 3, 4].map(i => <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>)}
         </div>
+      ) : activeTab === 'proofs' ? (
+        auth.currentUser ? (
+          <LandlordPaymentProofs
+            landlordId={auth.currentUser.uid}
+            onPaymentCreated={() => setActiveTab('all')}
+          />
+        ) : null
       ) : activeTab === 'unpaid' ? (
         <UnpaidTab tenants={Object.values(tenantsMap)} payments={payments} />
       ) : (
@@ -507,7 +529,18 @@ export function Payments() {
               <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Aucun paiement trouvé dans cette vue.</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-gray-750">
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.05 }
+                }
+              }}
+              className="divide-y divide-gray-100 dark:divide-gray-750"
+            >
               {sortedPayments.map(payment => {
                 const tenant = tenantsMap[payment.tenantId];
                 const isDupe = potentialDuplicates.has(payment.id);
@@ -516,8 +549,12 @@ export function Payments() {
                 const isPending = payment.status === 'En attente';
 
                 return (
-                  <div 
+                  <motion.div 
                     key={payment.id} 
+                    variants={{
+                      hidden: { opacity: 0, y: 8 },
+                      visible: { opacity: 1, y: 0, transition: { duration: 0.25 } }
+                    }}
                     onClick={() => setViewingPayment(payment)}
                     className={`p-3 sm:px-4 sm:py-3 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors cursor-pointer ${
                       isAdj ? 'bg-purple-50/40 dark:bg-purple-950/20' : ''
@@ -649,10 +686,10 @@ export function Payments() {
                         </button>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 );
               })}
-            </div>
+            </motion.div>
           )}
         </div>
       )}
@@ -1007,19 +1044,19 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full transition-colors my-6 border border-gray-100 dark:border-gray-700">
-        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col transition-colors border border-gray-100 dark:border-gray-700 overflow-hidden my-auto">
+        <div className="p-4 sm:p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center shrink-0">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-blue-600" />
             Nouveau Paiement
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-3.5 text-xs sm:text-sm">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3.5 text-xs sm:text-sm overflow-y-auto flex-1">
           {error && (
             <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-semibold border border-red-200">
               {error}
@@ -1183,7 +1220,7 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
             />
           </div>
 
-          <div className="pt-3 flex gap-2">
+          <div className="pt-3 border-t border-gray-100 dark:border-gray-700 flex gap-2 sticky bottom-0 bg-white dark:bg-gray-800 pb-1 mt-4">
             <button 
               type="button" 
               onClick={onClose} 

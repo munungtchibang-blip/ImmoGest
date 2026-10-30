@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, getDocs } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Link } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { Building2, Plus, ArrowLeft, Trash2, Home, Sparkles, ChevronRight, MapPin } from 'lucide-react';
 import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
@@ -155,7 +156,18 @@ export function Properties() {
           {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>)}
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: { staggerChildren: 0.05 }
+            }
+          }}
+          className="space-y-2.5"
+        >
           {properties.length === 0 ? (
             <div className="p-8 text-center bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
               <Building2 className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
@@ -185,7 +197,14 @@ export function Properties() {
               }
 
               return (
-                <div key={property.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-blue-300 dark:hover:border-blue-600 transition-all">
+                <motion.div
+                  key={property.id}
+                  variants={{
+                    hidden: { opacity: 0, y: 8 },
+                    visible: { opacity: 1, y: 0, transition: { duration: 0.25 } }
+                  }}
+                  className="bg-white dark:bg-gray-800 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-blue-300 dark:hover:border-blue-600 transition-all"
+                >
                   <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     {property.photoUrl ? (
                       <img src={property.photoUrl} alt={property.name} className="w-11 h-11 rounded-xl object-cover cursor-pointer shrink-0 border border-gray-200 dark:border-gray-700" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowPhoto(property.photoUrl); }} referrerPolicy="no-referrer" />
@@ -250,11 +269,11 @@ export function Properties() {
                       </button>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               );
             })
           )}
-        </div>
+        </motion.div>
       )}
 
       {showAddForm && (
