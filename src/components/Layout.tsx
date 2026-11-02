@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio, FileCheck2, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Wrench, LogOut, Bell, Calendar as CalendarIcon, Receipt, Home, FileText, Settings, X, FileSignature, Globe, Radio, FileCheck2, MessageSquare, ShieldCheck } from 'lucide-react';
 import { logout, db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
@@ -159,6 +159,9 @@ export function Layout() {
     { to: '/notifications', icon: Bell, label: 'Notifications', badge: unreadNotifCount, badgeColor: 'bg-amber-500' },
     { to: '/reports', icon: FileText, label: t('Reports') },
     { to: '/settings', icon: Settings, label: t('Settings') },
+    ...((auth.currentUser?.email?.toLowerCase() === 'mushitujacques3@gmail.com' || auth.currentUser?.email?.toLowerCase().includes('admin')) ? [
+      { to: '/admin', icon: ShieldCheck, label: 'Administration', badge: 'Super', badgeColor: 'bg-indigo-600' }
+    ] : [])
   ];
 
   return (

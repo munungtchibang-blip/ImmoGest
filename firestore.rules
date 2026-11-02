@@ -211,9 +211,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow get: if true;
-      allow list: if true;
+      allow list: if isAuthenticated();
       allow create: if true;
-      allow update: if true;
+      allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
       
       match /loginHistory/{historyId} {
@@ -222,7 +222,8 @@ service cloud.firestore {
     }
 
     match /properties/{propertyId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if isAuthenticated();
       allow create: if isAuthenticated() && isValidProperty(request.resource.data);
       allow update: if isOwner(resource.data.landlordId) && 
                        isValidProperty(request.resource.data) &&
@@ -233,7 +234,7 @@ service cloud.firestore {
 
     match /contracts/{contractId} {
       allow get: if true;
-      allow list: if true;
+      allow list: if isAuthenticated();
       allow create: if isAuthenticated() && isValidContract(request.resource.data);
       allow update: if isOwner(resource.data.landlordId) && 
                        isValidContract(request.resource.data) &&
@@ -244,7 +245,7 @@ service cloud.firestore {
 
     match /tenants/{tenantId} {
       allow get: if true;
-      allow list: if true;
+      allow list: if isAuthenticated();
       allow create: if isValidTenant(request.resource.data);
       allow update: if isValidTenant(request.resource.data) &&
                        request.resource.data.landlordId == resource.data.landlordId &&
@@ -254,7 +255,7 @@ service cloud.firestore {
 
     match /payments/{paymentId} {
       allow get: if true;
-      allow list: if true;
+      allow list: if isAuthenticated();
       allow create: if isValidPayment(request.resource.data);
       allow update: if isValidPayment(request.resource.data) &&
                        request.resource.data.landlordId == resource.data.landlordId &&
@@ -264,7 +265,7 @@ service cloud.firestore {
 
     match /maintenance/{issueId} {
       allow get: if true;
-      allow list: if true;
+      allow list: if isAuthenticated();
       allow create: if isValidMaintenanceIssue(request.resource.data);
       allow update: if isValidMaintenanceIssue(request.resource.data) &&
                        request.resource.data.landlordId == resource.data.landlordId &&
@@ -273,15 +274,16 @@ service cloud.firestore {
     }
 
     match /notifications/{notificationId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if isAuthenticated();
       allow create: if true;
-      allow update: if true;
+      allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
 
     match /expenses/{expenseId} {
       allow get: if true;
-      allow list: if true;
+      allow list: if isAuthenticated();
       allow create: if isValidExpense(request.resource.data);
       allow update: if isValidExpense(request.resource.data) &&
                        request.resource.data.landlordId == resource.data.landlordId &&
@@ -290,23 +292,26 @@ service cloud.firestore {
     }
 
     match /paymentProofs/{proofId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if isAuthenticated();
       allow create: if true;
-      allow update: if true;
+      allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
 
     match /payment_proofs/{proofId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if isAuthenticated();
       allow create: if true;
-      allow update: if true;
+      allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
 
     match /subscription_invoices/{invoiceId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if true;
+      allow get: if true;
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
 

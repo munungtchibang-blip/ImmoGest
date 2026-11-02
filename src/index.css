@@ -120,3 +120,29 @@ body {
     scrollbar-width: none;
   }
 }
+
+/* Form containers: ensure complete visibility, neutral background and consistent responsive display */
+.payments-form-container {
+  width: 100%;
+  max-width: 28rem;
+  max-height: 85vh;
+  overflow-y: auto;
+  flex-grow: 1;
+  padding: 1.5rem; /* p-6 */
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background-color: #ffffff; /* Fond clair neutre de l'application (suppression de fond sombre/noir résiduel) */
+}
+
+:where(.dark, .dark *) .payments-form-container {
+  background-color: #1f2937; /* Fond sombre neutre de l'application */
+}
+
+.payments-form-container form {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  width: 100%;
+}
+

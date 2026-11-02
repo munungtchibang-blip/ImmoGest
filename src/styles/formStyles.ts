@@ -5,7 +5,7 @@
 
 export const formStyles = {
   // Clean floating modal overlay with NO heavy black backdrop
-  modalOverlay: 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs transition-all',
+  modalOverlay: 'fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto bg-transparent transition-all',
   
   // Floating modal container
   modalCard: 'relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-200/90 dark:border-gray-750 p-5 sm:p-7 overflow-hidden my-auto max-h-[92vh] flex flex-col',

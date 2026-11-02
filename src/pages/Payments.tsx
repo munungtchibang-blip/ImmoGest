@@ -736,7 +736,7 @@ export function Payments() {
 
       {/* Viewing Payment Detail Modal */}
       {viewingPayment && (
-        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setViewingPayment(null); }}>
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center mb-5 border-b border-gray-100 dark:border-gray-700 pb-3">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
@@ -831,7 +831,7 @@ export function Payments() {
 
       {/* Pro recommendation modal after payment */}
       {showPostPayModal && (
-        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50" onClick={(e) => { if (e.target === e.currentTarget) setShowPostPayModal(false); }}>
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-sm w-full p-6 text-center border border-gray-100 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-3">
               <CheckCircle2 className="w-7 h-7" />
@@ -1044,32 +1044,42 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col transition-colors border border-gray-100 dark:border-gray-700 overflow-hidden my-auto">
-        <div className="p-4 sm:p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center shrink-0">
+    <div 
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-transparent overflow-y-auto" 
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div 
+        className="payments-form-container bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-y-auto flex-grow p-6 my-auto transition-colors border border-gray-100 dark:border-gray-700 modal-enter"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="pb-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-blue-600" />
             Nouveau Paiement
           </h2>
-          <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+          <button 
+            type="button"
+            onClick={onClose} 
+            className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3.5 text-xs sm:text-sm overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} className="pt-4 space-y-3.5 text-xs sm:text-sm flex-grow">
           {error && (
-            <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-semibold border border-red-200">
+            <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-2.5 rounded-xl text-xs font-semibold border border-red-200">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Locataire</label>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Locataire</label>
             <select 
               required 
               value={formData.tenantId} 
               onChange={e => setFormData({ ...formData, tenantId: e.target.value })} 
-              className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm"
             >
               <option value="">Sélectionnez un locataire</option>
               {tenants.map(t => (
@@ -1080,11 +1090,11 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Type</label>
               <select 
                 value={formData.type} 
                 onChange={e => setFormData({ ...formData, type: e.target.value })} 
-                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm"
               >
                 <option>Loyer</option>
                 <option>Garantie</option>
@@ -1096,12 +1106,12 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
             </div>
 
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Devise</label>
-              <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Devise</label>
+              <div className="flex rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 h-[38px]">
                 <button
                   type="button"
                   onClick={() => setCurrency('USD')}
-                  className={`flex-1 py-2 font-bold text-xs transition-colors ${
+                  className={`flex-1 py-1.5 font-bold text-xs transition-colors ${
                     currency === 'USD' ? 'bg-blue-600 text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
                   }`}
                 >
@@ -1110,7 +1120,7 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
                 <button
                   type="button"
                   onClick={() => setCurrency('CDF')}
-                  className={`flex-1 py-2 font-bold text-xs transition-colors ${
+                  className={`flex-1 py-1.5 font-bold text-xs transition-colors ${
                     currency === 'CDF' ? 'bg-blue-600 text-white' : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
                   }`}
                 >
@@ -1122,7 +1132,7 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Montant ({currency})
               </label>
               <input 
@@ -1131,7 +1141,7 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
                 min="1" 
                 value={formData.amount} 
                 onChange={e => setFormData({ ...formData, amount: e.target.value })} 
-                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm" 
                 placeholder={currency === 'USD' ? 'Ex: 400' : 'Ex: 1140000'} 
               />
               {formData.amount && (
@@ -1142,36 +1152,36 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
             </div>
 
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Taux (1$ = CDF)
               </label>
               <input 
                 type="number" 
                 value={exchangeRate} 
                 onChange={e => setExchangeRate(Number(e.target.value))} 
-                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm" 
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Date</label>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Date</label>
               <input 
                 required 
                 type="date" 
                 value={formData.date} 
                 onChange={e => setFormData({ ...formData, date: e.target.value })} 
-                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm" 
               />
             </div>
 
             <div>
-              <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Mode de versement</label>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Mode de versement</label>
               <select 
                 value={formData.method} 
                 onChange={e => setFormData({ ...formData, method: e.target.value as any })} 
-                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs sm:text-sm"
               >
                 <option>Cash</option>
                 <option>Mobile Money</option>
@@ -1210,17 +1220,17 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
           )}
 
           <div>
-            <label className="block font-medium text-gray-700 dark:text-gray-300 mb-1">Notes ou quittance</label>
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Notes ou quittance</label>
             <textarea 
               rows={2} 
               value={formData.notes} 
               onChange={e => setFormData({ ...formData, notes: e.target.value })} 
-              className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none" 
+              className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none text-xs sm:text-sm" 
               placeholder="Commentaires, référence quittance manuelle..." 
             />
           </div>
 
-          <div className="pt-3 border-t border-gray-100 dark:border-gray-700 flex gap-2 sticky bottom-0 bg-white dark:bg-gray-800 pb-1 mt-4">
+          <div className="pt-3.5 flex gap-3 border-t border-gray-100 dark:border-gray-700">
             <button 
               type="button" 
               onClick={onClose} 
@@ -1231,7 +1241,7 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
             <button 
               type="submit" 
               disabled={loading} 
-              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
             >
               {loading ? 'Validation...' : 'Valider & Enregistrer'}
             </button>
@@ -1283,7 +1293,7 @@ function CancelAdjustmentModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-md w-full p-6 border border-gray-100 dark:border-gray-700">
         <div className="flex items-center gap-3 text-purple-600 mb-3">
           <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/40 flex items-center justify-center">
@@ -1361,8 +1371,14 @@ function DuplicateInspectionModal({
   onCancelPayment: (p: PaymentRecord) => void 
 }) {
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-gray-100 dark:border-gray-700">
+    <div 
+      className="fixed inset-0 bg-transparent flex items-start sm:items-center justify-center p-4 z-50 overflow-y-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full my-4 sm:my-auto p-6 border border-gray-100 dark:border-gray-700 modal-enter"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2 text-amber-600">
             <AlertTriangle className="w-5 h-5" />

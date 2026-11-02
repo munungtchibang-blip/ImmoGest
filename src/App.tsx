@@ -46,6 +46,7 @@ const Radar = React.lazy(() => import('./pages/Radar').then(m => ({ default: m.R
 const NotificationsCenter = React.lazy(() => import('./pages/NotificationsCenter').then(m => ({ default: m.NotificationsCenter })));
 const NoticeAndTermination = React.lazy(() => import('./pages/NoticeAndTermination').then(m => ({ default: m.NoticeAndTermination })));
 const Messages = React.lazy(() => import('./pages/Messages').then(m => ({ default: m.Messages })));
+const Admin = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
 
 function RouteLoadingFallback() {
   return (
@@ -1163,6 +1164,7 @@ export default function App() {
                     <Route path="notifications" element={<NotificationsCenter />} />
                     <Route path="reports" element={<Reports />} />
                     <Route path="settings" element={<Settings />} />
+                    <Route path="admin" element={<Admin />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
                 </>

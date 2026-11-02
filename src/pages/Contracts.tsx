@@ -575,7 +575,7 @@ export function Contracts() {
 
       {/* Create / Edit Modal with Pro Legal Clauses Insertion */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+        <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
           <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-lg w-full p-6 space-y-4 my-8">
             <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-3">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">

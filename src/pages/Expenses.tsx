@@ -386,7 +386,7 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 transition-colors">
         <div className="flex justify-between items-center mb-4 pb-3 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-base font-bold text-gray-900 dark:text-white">Nouvelle dépense</h2>

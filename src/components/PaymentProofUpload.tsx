@@ -69,7 +69,7 @@ interface PaymentProofUploadProps {
 
 export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, onProofSubmitted }) => {
   const [proofs, setProofs] = useState<PaymentProof[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(tenant.id));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
 
@@ -90,7 +90,6 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
   // Real-time listener for tenant's payment proofs
   useEffect(() => {
     if (!tenant.id) {
-      setLoading(false);
       return;
     }
 
@@ -446,7 +445,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
 
       {/* Submission Modal Dialog */}
       {showFormModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent animate-in fade-in duration-200" onClick={(e) => { if (e.target === e.currentTarget) resetForm(); }}>
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-xl max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-800/50">
@@ -593,7 +592,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
               {/* File Upload Zone */}
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                  Reçu ou Capture justificative (Max 5 Mo, JPG/PNG/PDF) <span className="text-rose-500">*</span>
+                  Reçu ou Capture justificative (Max 10 Mo, JPG/PNG/PDF) <span className="text-rose-500">*</span>
                 </label>
 
                 <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-4 text-center hover:border-emerald-500 dark:hover:border-emerald-400 transition bg-slate-50/50 dark:bg-slate-800/40">
@@ -611,7 +610,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
                       Cliquez pour sélectionner un fichier ou une photo
                     </span>
                     <span className="block text-xs text-slate-500 mt-1">
-                      Formats autorisés : JPG, PNG, PDF (max 5 Mo)
+                      Formats autorisés : JPG, PNG, PDF (max 10 Mo)
                     </span>
                   </label>
                 </div>

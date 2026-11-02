@@ -24,7 +24,8 @@ import {
   onSnapshot, 
   doc, 
   updateDoc, 
-  addDoc 
+  addDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { PaymentProof } from './PaymentProofUpload';
@@ -123,8 +124,12 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
     try {
       const nowIso = new Date().toISOString();
 
+      // Use atomic batch write so proof status, payment record and notification are committed together
+      const batch = writeBatch(db);
+
       // 1. Update proof status
-      await updateDoc(doc(db, 'payment_proofs', acceptModalProof.id), {
+      const proofRef = doc(db, 'payment_proofs', acceptModalProof.id);
+      batch.update(proofRef, {
         status: 'Preuve acceptée',
         verifiedAt: nowIso,
         verifiedBy: landlordId,
@@ -133,7 +138,9 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
       // 2. Optional: Automatically record in payments collection
       if (createPaymentRecord) {
-        await addDoc(collection(db, 'payments'), {
+        const paymentRef = doc(collection(db, 'payments'));
+        const monthKey = (acceptModalProof.paymentDate || nowIso).slice(0, 7);
+        batch.set(paymentRef, {
           landlordId,
           tenantId: acceptModalProof.tenantId,
           tenantName: acceptModalProof.tenantName,
@@ -143,6 +150,7 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
           currency: acceptModalProof.currency,
           date: acceptModalProof.paymentDate || nowIso.split('T')[0],
           paymentDate: acceptModalProof.paymentDate || nowIso.split('T')[0],
+          monthKey,
           method: acceptModalProof.paymentMethod,
           paymentMethod: acceptModalProof.paymentMethod,
           type: acceptModalProof.paymentType,
@@ -150,6 +158,9 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
           reference: acceptModalProof.transactionReference,
           notes: `Validé via preuve de paiement #${acceptModalProof.id}. ${acceptModalProof.comment || ''}`.trim(),
           proofId: acceptModalProof.id,
+          receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
+          confirmedAt: nowIso,
+          confirmedBy: landlordId,
           createdAt: nowIso,
           updatedAt: nowIso
         });
@@ -157,7 +168,8 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
       // 3. Notify tenant
       if (acceptModalProof.tenantId) {
-        await addDoc(collection(db, 'notifications'), {
+        const notifRef = doc(collection(db, 'notifications'));
+        batch.set(notifRef, {
           tenantId: acceptModalProof.tenantId,
           landlordId,
           type: 'PAYMENT_PROOF_ACCEPTED',
@@ -167,6 +179,9 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
           createdAt: nowIso
         });
       }
+
+      // Commit all operations atomically
+      await batch.commit();
 
       toast.success('Preuve validée avec succès ! Le paiement a été enregistré.', { id: toastId });
       setAcceptModalProof(null);
@@ -547,7 +562,7 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
       {/* Accept Confirmation Modal */}
       {acceptModalProof && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent animate-in fade-in" onClick={(e) => { if (e.target === e.currentTarget) setAcceptModalProof(null); }}>
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mb-4">
               <CheckCircle2 className="w-6 h-6" />
@@ -603,7 +618,7 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
       {/* Reject Modal */}
       {rejectModalProof && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent animate-in fade-in" onClick={(e) => { if (e.target === e.currentTarget) setRejectModalProof(null); }}>
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center mb-4">
               <XCircle className="w-6 h-6" />
@@ -654,7 +669,7 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
       {/* Request Info Modal */}
       {infoModalProof && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-transparent animate-in fade-in" onClick={(e) => { if (e.target === e.currentTarget) setInfoModalProof(null); }}>
           <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-md p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-4">
               <HelpCircle className="w-6 h-6" />

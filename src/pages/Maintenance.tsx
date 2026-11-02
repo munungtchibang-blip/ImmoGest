@@ -651,7 +651,7 @@ function RespondModal({ issue, technicians, onClose }: { issue: any, technicians
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 transition-colors modal-enter">
         <h2 className="text-lg font-black text-gray-900 dark:text-white mb-1">
           Gestion de l'Intervention & Attribution
@@ -925,7 +925,7 @@ function CreateRepairModal({ properties, technicians, onClose }: { properties: a
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 transition-colors modal-enter">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2.5">
@@ -1210,7 +1210,7 @@ function PayRepairModal({ issue, onClose }: { issue: any, onClose: () => void })
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-transparent flex items-center justify-center p-4 z-50 overflow-y-auto" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-md w-full p-6 transition-colors modal-enter space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

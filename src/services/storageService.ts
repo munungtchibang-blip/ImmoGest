@@ -10,7 +10,7 @@ export interface UploadedProofFile {
   isBase64Fallback?: boolean;
 }
 
-const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/png',
@@ -40,7 +40,7 @@ export function validateProofFile(file: File): { valid: boolean; error?: string 
   if (file.size > MAX_FILE_SIZE_BYTES) {
     return {
       valid: false,
-      error: `Le fichier dépasse la taille maximale autorisée de 5 Mo (${(file.size / (1024 * 1024)).toFixed(1)} Mo).`,
+      error: `Le fichier dépasse la taille maximale autorisée de 10 Mo (${(file.size / (1024 * 1024)).toFixed(1)} Mo).`,
     };
   }
 
