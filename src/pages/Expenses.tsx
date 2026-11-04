@@ -6,7 +6,9 @@ import { Receipt, Plus, ArrowLeft, Trash2, X, Sparkles, TrendingDown, ChevronRig
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import { motion } from 'motion/react';
 import { useSubscription } from '../context/SubscriptionContext';
+import { containerVariants, cardVariants } from '../lib/animations';
 
 import { BudgetAndSupplierManager } from '../components/BudgetAndSupplierManager';
 
@@ -176,7 +178,12 @@ export function Expenses() {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 overflow-hidden transition-colors">
-          <div className="divide-y divide-gray-100 dark:divide-gray-750">
+          <motion.div
+            initial="hidden"
+            animate="show"
+            variants={containerVariants}
+            className="divide-y divide-gray-100 dark:divide-gray-750"
+          >
             {expenses.length === 0 ? (
               <div className="p-8 text-center">
                 <Receipt className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
@@ -186,7 +193,12 @@ export function Expenses() {
               expenses.map(expense => {
                 const isExpanded = expandedId === expense.id;
                 return (
-                  <div key={expense.id} className="transition-colors">
+                  <motion.div
+                    key={expense.id}
+                    variants={cardVariants}
+                    whileHover={{ y: -2, scale: 1.005 }}
+                    className="transition-colors"
+                  >
                     <div 
                       className="p-3 sm:px-4 sm:py-2.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/40"
                       onClick={() => setExpandedId(isExpanded ? null : expense.id)}
@@ -235,11 +247,11 @@ export function Expenses() {
                         {expense.description && <p><strong>Détails :</strong> {expense.description}</p>}
                       </div>
                     )}
-                  </div>
+                  </motion.div>
                 );
               })
             )}
-          </div>
+          </motion.div>
         </div>
       )}
       </>

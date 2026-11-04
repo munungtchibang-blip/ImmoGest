@@ -404,5 +404,12 @@ service cloud.firestore {
       allow read, create, update: if true;
       allow delete: if isAuthenticated();
     }
+
+    match /email_registry/{emailKey} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.uid || request.auth.uid == request.resource.data.uid);
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
   }
 }

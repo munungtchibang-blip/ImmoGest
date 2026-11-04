@@ -22,6 +22,8 @@ import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { motion } from 'motion/react';
+import { containerVariants, cardVariants } from '../lib/animations';
 
 import { PreventiveMaintenanceManager } from '../components/PreventiveMaintenanceManager';
 import { TechnicianManager } from '../components/TechnicianManager';
@@ -274,7 +276,12 @@ export function Maintenance() {
           {[1, 2, 3].map(i => <div key={i} className="h-28 bg-gray-200 dark:bg-gray-800 rounded-2xl"></div>)}
         </div>
       ) : (
-        <div className="space-y-3">
+        <motion.div 
+          initial="hidden"
+          animate="show"
+          variants={containerVariants}
+          className="space-y-3"
+        >
           {filteredIssues.length === 0 ? (
             <div className="p-12 text-center bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 transition-colors">
               <Wrench className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
@@ -292,9 +299,11 @@ export function Maintenance() {
               const hasQuote = Boolean(issue.quote);
 
               return (
-                <div 
+                <motion.div 
                   key={issue.id} 
-                  className={`bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl shadow-xs border transition-all card-enter ${
+                  variants={cardVariants}
+                  whileHover={{ y: -3, scale: 1.005 }}
+                  className={`bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl shadow-xs border transition-all ${
                     isTerminatedByTech
                       ? 'border-teal-400 dark:border-teal-600 bg-teal-50/20 dark:bg-teal-950/10'
                       : hasQuote && issue.status === 'Devis soumis'
@@ -474,11 +483,11 @@ export function Maintenance() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               );
             })
           )}
-        </div>
+        </motion.div>
       )}
       </>
       )}

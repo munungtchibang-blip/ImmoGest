@@ -8,6 +8,7 @@ import { PhotoModal } from '../components/PhotoModal';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
 import { useSubscription } from '../context/SubscriptionContext';
+import { containerVariants, cardVariants } from '../lib/animations';
 
 export function Properties() {
   const { t } = useTranslation();
@@ -158,14 +159,8 @@ export function Properties() {
       ) : (
         <motion.div
           initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: { staggerChildren: 0.05 }
-            }
-          }}
+          animate="show"
+          variants={containerVariants}
           className="space-y-2.5"
         >
           {properties.length === 0 ? (
@@ -199,11 +194,9 @@ export function Properties() {
               return (
                 <motion.div
                   key={property.id}
-                  variants={{
-                    hidden: { opacity: 0, y: 8 },
-                    visible: { opacity: 1, y: 0, transition: { duration: 0.25 } }
-                  }}
-                  className="bg-white dark:bg-gray-800 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-blue-300 dark:hover:border-blue-600 transition-all"
+                  variants={cardVariants}
+                  whileHover={{ y: -3, scale: 1.01 }}
+                  className="bg-white dark:bg-gray-800 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-blue-300 dark:hover:border-blue-600 transition-all cursor-pointer"
                 >
                   <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     {property.photoUrl ? (

@@ -26,6 +26,8 @@ import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from 
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { useSubscription } from '../context/SubscriptionContext';
+import { normalizeEmail, lockEmailRegistration, verifyEmailUniqueness } from '../lib/identity';
+import { containerVariants, cardVariants } from '../lib/animations';
 
 interface TenantDispatchInfo {
   tenantId: string;
@@ -221,24 +223,16 @@ export function Tenants() {
       ) : (
         <motion.div
           initial="hidden"
-          animate="visible"
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: { staggerChildren: 0.05 }
-            }
-          }}
+          animate="show"
+          variants={containerVariants}
           className="space-y-2.5"
         >
           {filteredTenants.map(tenant => (
             <motion.div
               key={tenant.id}
-              variants={{
-                hidden: { opacity: 0, y: 8 },
-                visible: { opacity: 1, y: 0, transition: { duration: 0.25 } }
-              }}
-              className="bg-white dark:bg-gray-800 p-3.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group relative"
+              variants={cardVariants}
+              whileHover={{ y: -3, scale: 1.01 }}
+              className="bg-white dark:bg-gray-800 p-3.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group relative cursor-pointer"
             >
               <div className="flex items-center gap-3.5 min-w-0 flex-1">
                 {tenant.photoUrl ? (
@@ -592,7 +586,15 @@ function AddTenantModal({
           }
       }
       if (formData.email) {
-          const qEmail = query(collection(db, 'tenants'), where('email', '==', formData.email));
+          const cleanEmailCheck = normalizeEmail(formData.email);
+          const uniqueness = await verifyEmailUniqueness(cleanEmailCheck);
+          if (!uniqueness.isAvailable) {
+             setError(uniqueness.errorMessage || "Cette adresse email possède déjà un compte ImmoGest.");
+             toast.error("Email déjà utilisé.");
+             return;
+          }
+
+          const qEmail = query(collection(db, 'tenants'), where('email', '==', cleanEmailCheck));
           const sEmail = await getDocs(qEmail);
           if (!sEmail.empty) {
              setError("Cet email est déjà utilisé par un autre locataire.");
@@ -614,16 +616,17 @@ function AddTenantModal({
 
     let userCredential;
     const pwd = crypto.randomUUID().slice(-8) + 'A1!';
+    const cleanEmail = normalizeEmail(formData.email);
     
     try {
       const secondaryAppId = 'Secondary_' + crypto.randomUUID().replace(/-/g, '');
       const secondaryApp = initializeApp(firebaseConfig, secondaryAppId);
       const secondaryAuth = getAuth(secondaryApp);
-      userCredential = await createUserWithEmailAndPassword(secondaryAuth, formData.email, pwd);
+      userCredential = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, pwd);
     } catch (authErr: any) {
       console.error("Auth creation failed", authErr);
       if (authErr.code === 'auth/email-already-in-use') {
-        setError("Cette adresse email possède déjà un compte.");
+        setError("Cette adresse email possède déjà un compte ImmoGest.");
         toast.error("Email déjà utilisé.");
       } else {
         setError("Erreur lors de la création du compte Auth.");
@@ -637,6 +640,7 @@ function AddTenantModal({
       const now = new Date().toISOString();
       const tenantData: any = {
         ...formData,
+        email: cleanEmail,
         guaranteeAmount: Number(formData.guaranteeAmount || 0),
         monthlyRent: Number(formData.monthlyRent || 0),
         childrenCount: Number(formData.childrenCount || 0),
@@ -668,12 +672,13 @@ function AddTenantModal({
         await setDoc(doc(secondaryDb, 'users', userCredential.user.uid), {
              name: formData.name,
              phone: formData.phone,
-             email: formData.email,
+             email: cleanEmail,
              role: 'tenant',
              tenantId: newTenantId,
              createdAt: now
         });
-        await sendPasswordResetEmail(secondaryAuth, formData.email);
+        await lockEmailRegistration(cleanEmail, userCredential.user.uid, 'tenant');
+        await sendPasswordResetEmail(secondaryAuth, cleanEmail);
         await secondaryAuth.signOut();
       } catch (authErr: any) {
         console.error("Failed to set user document / send reset email", authErr);

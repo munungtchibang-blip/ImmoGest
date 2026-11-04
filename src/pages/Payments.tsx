@@ -23,6 +23,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import { useSubscription } from '../context/SubscriptionContext';
+import { containerVariants, cardVariants } from '../lib/animations';
 import { LandlordPaymentProofs } from '../components/LandlordPaymentProofs';
 import toast from 'react-hot-toast';
 import { 
@@ -531,14 +532,8 @@ export function Payments() {
           ) : (
             <motion.div
               initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: { opacity: 0 },
-                visible: {
-                  opacity: 1,
-                  transition: { staggerChildren: 0.05 }
-                }
-              }}
+              animate="show"
+              variants={containerVariants}
               className="divide-y divide-gray-100 dark:divide-gray-750"
             >
               {sortedPayments.map(payment => {
@@ -551,12 +546,10 @@ export function Payments() {
                 return (
                   <motion.div 
                     key={payment.id} 
-                    variants={{
-                      hidden: { opacity: 0, y: 8 },
-                      visible: { opacity: 1, y: 0, transition: { duration: 0.25 } }
-                    }}
+                    variants={cardVariants}
+                    whileHover={{ y: -2, scale: 1.005 }}
                     onClick={() => setViewingPayment(payment)}
-                    className={`p-3 sm:px-4 sm:py-3 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors cursor-pointer ${
+                    className={`p-3 sm:px-4 sm:py-3 flex items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-all cursor-pointer ${
                       isAdj ? 'bg-purple-50/40 dark:bg-purple-950/20' : ''
                     } ${isCancelled ? 'opacity-60 bg-gray-50/60 dark:bg-gray-900/40' : ''}`}
                   >
@@ -942,6 +935,7 @@ function UnpaidTab({ tenants, payments }: { tenants: any[], payments: PaymentRec
  */
 function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onClose: () => void, onSuccess?: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [error, setError] = useState('');
   const [currency, setCurrency] = useState<'USD' | 'CDF'>('USD');
   const [exchangeRate, setExchangeRate] = useState<number>(DEFAULT_CURRENCY_CONFIG.defaultRateUSDToCDF);
@@ -956,6 +950,14 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
     notes: '',
     status: 'Confirmé' as PaymentStatus
   });
+
+  // Smooth perception of data preloading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 280);
+    return () => clearTimeout(timer);
+  }, []);
 
   const convertedEquivalent = useMemo(() => {
     const num = Number(formData.amount) || 0;
@@ -1066,6 +1068,58 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
           </button>
         </div>
 
+        {isInitialLoading ? (
+          /* Skeleton Loader animation inside .payments-form-container */
+          <div className="pt-4 space-y-3.5 animate-in fade-in duration-200 flex-grow">
+            <div className="space-y-1.5">
+              <div className="h-3 w-20 rounded-md payments-skeleton-shimmer"></div>
+              <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <div className="h-3 w-14 rounded-md payments-skeleton-shimmer"></div>
+                <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="h-3 w-16 rounded-md payments-skeleton-shimmer"></div>
+                <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <div className="h-3 w-24 rounded-md payments-skeleton-shimmer"></div>
+                <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="h-3 w-20 rounded-md payments-skeleton-shimmer"></div>
+                <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <div className="h-3 w-12 rounded-md payments-skeleton-shimmer"></div>
+                <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="h-3 w-28 rounded-md payments-skeleton-shimmer"></div>
+                <div className="h-10 w-full rounded-xl payments-skeleton-shimmer"></div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="h-3 w-28 rounded-md payments-skeleton-shimmer"></div>
+              <div className="h-14 w-full rounded-xl payments-skeleton-shimmer"></div>
+            </div>
+
+            <div className="pt-3.5 flex gap-3 border-t border-gray-100 dark:border-gray-700 mt-2">
+              <div className="h-10 flex-1 rounded-xl payments-skeleton-shimmer"></div>
+              <div className="h-10 flex-1 rounded-xl payments-skeleton-shimmer"></div>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="pt-4 space-y-3.5 text-xs sm:text-sm flex-grow">
           {error && (
             <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-2.5 rounded-xl text-xs font-semibold border border-red-200">
@@ -1247,6 +1301,7 @@ function AddPaymentModal({ tenants, onClose, onSuccess }: { tenants: any[], onCl
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );

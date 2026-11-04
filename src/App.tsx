@@ -58,6 +58,7 @@ function RouteLoadingFallback() {
 }
 
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { normalizeEmail, verifyEmailUniqueness, lockEmailRegistration } from './lib/identity';
 import { Shield, CheckCircle2, AlertTriangle, KeyRound, ArrowRight, UserCheck, Wrench, Building, RefreshCw, Sparkles, Copy, Check } from 'lucide-react';
 
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
@@ -69,6 +70,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [permissionError, setPermissionError] = useState<string | null>(null);
@@ -136,8 +138,11 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     setPermissionError(null);
     if (loading) return;
 
-    if (!email || !password || !name) {
-      toast.error("Veuillez renseigner votre nom, email et mot de passe.");
+    const cleanEmail = normalizeEmail(email);
+    const cleanPhone = phone.trim();
+
+    if (!cleanEmail || !password || !confirmPassword || !name.trim()) {
+      toast.error("Veuillez renseigner votre nom, email et mot de passe de confirmation.");
       return;
     }
 
@@ -146,11 +151,22 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       return;
     }
 
+    if (password !== confirmPassword) {
+      toast.error("Les deux mots de passe ne correspondent pas. Veuillez vérifier votre saisie.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const cleanEmail = email.trim().toLowerCase();
-      const cleanPhone = phone.trim();
+      // Règle d'or ImmoGest : 1 adresse e-mail normalisée = 1 seule identité utilisateur
+      const uniqueness = await verifyEmailUniqueness(cleanEmail);
+      if (!uniqueness.isAvailable) {
+        setPermissionError(uniqueness.errorMessage || "Cette adresse e-mail est déjà associée à un compte ImmoGest. Connectez-vous avec votre compte existant.");
+        setLoading(false);
+        return;
+      }
+
       let foundTenantId: string | null = null;
       let foundTechId: string | null = null;
 
@@ -331,13 +347,16 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       await updateDoc(verifRef, { verified: true, verifiedAt: new Date().toISOString() });
 
       // Create Firebase Auth user
+      const cleanEmail = normalizeEmail(email);
       let userCredential;
       try {
-        userCredential = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+        userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       } catch (authErr: any) {
         if (authErr.code === 'auth/email-already-in-use') {
-          // If already exists, attempt to sign in to bind role
-          userCredential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+          toast.error("Cette adresse e-mail est déjà associée à un compte ImmoGest. Connectez-vous avec vos identifiants existants.");
+          setAuthMode('login');
+          setLoading(false);
+          return;
         } else {
           throw authErr;
         }
@@ -348,7 +367,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       // Save user record in Firestore 'users' collection
       await setDoc(doc(db, 'users', u.uid), {
         name: name.trim(),
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
         phone: phone.trim(),
         role: selectedRole,
         tenantId: matchedTenantId || null,
@@ -357,6 +376,9 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         verifiedAt: new Date().toISOString(),
         createdAt: new Date().toISOString()
       }, { merge: true });
+
+      // Verrouille l'unicité stricte au niveau de la base de données
+      await lockEmailRegistration(cleanEmail, u.uid, selectedRole);
 
       // If tenant, link user ID directly into the tenant's profile
       if (matchedTenantId) {
@@ -771,17 +793,41 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Mot de passe (min. 6 caractères)</label>
-            <input 
-              type="password" 
-              required
-              minLength={6}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full p-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Mot de passe (min. 6 car.)</label>
+              <input 
+                type="password" 
+                required
+                minLength={6}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Votre mot de passe"
+                className="w-full p-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Confirmer mot de passe</label>
+              <input 
+                type="password" 
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="Confirmez le mot de passe"
+                className={`w-full p-2.5 text-sm border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 outline-none ${
+                  confirmPassword && confirmPassword !== password 
+                    ? 'border-red-400 focus:ring-red-400 dark:border-red-500' 
+                    : 'border-gray-200 dark:border-gray-700 focus:ring-blue-500'
+                }`}
+              />
+            </div>
           </div>
+          {confirmPassword && confirmPassword !== password && (
+            <p className="text-[11px] text-red-500 font-medium -mt-2">
+              Les deux mots de passe ne correspondent pas.
+            </p>
+          )}
 
           <button 
             type="submit"

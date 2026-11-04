@@ -28,6 +28,7 @@ import { format, intervalToDuration } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
+import { normalizeEmail } from '../lib/identity';
 import { getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
 
 export function TenantDetail() {
@@ -1350,6 +1351,10 @@ function EditTenantModal({ tenant, onClose }: { tenant: any, onClose: () => void
         updatedAt: new Date().toISOString()
       };
       
+      if (formData.email) {
+        updateData.email = normalizeEmail(formData.email);
+      }
+
       if (updateData.housingType !== 'Appartement' && updateData.housingType !== 'Immeuble') {
           updateData.level = deleteField();
       }
@@ -1368,8 +1373,14 @@ function EditTenantModal({ tenant, onClose }: { tenant: any, onClose: () => void
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-2xl w-full my-8 transition-colors">
+    <div 
+      className="fixed inset-0 bg-transparent flex items-start sm:items-center justify-center p-4 z-50 overflow-y-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-gray-700 max-w-2xl w-full my-4 sm:my-auto transition-colors modal-enter"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-6 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Modifier le locataire</h2>
         </div>

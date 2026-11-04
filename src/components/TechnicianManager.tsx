@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
+import { normalizeEmail, verifyEmailUniqueness } from '../lib/identity';
 
 export interface TechnicianAccount {
   id: string;
@@ -327,11 +328,22 @@ function TechnicianModal({
         const randomDigits = Math.floor(1000 + Math.random() * 9000);
         const accessCode = `TECH-${randomDigits}`;
 
+        const cleanTechEmail = normalizeEmail(formData.email);
+        if (cleanTechEmail) {
+          const uniqueness = await verifyEmailUniqueness(cleanTechEmail);
+          if (!uniqueness.isAvailable) {
+            setError(uniqueness.errorMessage || "Cette adresse e-mail est déjà associée à un compte ImmoGest.");
+            toast.error("Email déjà utilisé.");
+            setLoading(false);
+            return;
+          }
+        }
+
         await addDoc(collection(db, 'technicians'), {
           landlordId: auth.currentUser.uid,
           name: formData.name.trim(),
           phone: formData.phone.trim(),
-          email: formData.email.trim() || undefined,
+          email: cleanTechEmail || undefined,
           specialty: formData.specialty,
           status: formData.status,
           accessCode,
@@ -346,7 +358,7 @@ function TechnicianModal({
           onSuccess({
             name: formData.name.trim(),
             phone: formData.phone.trim(),
-            email: formData.email.trim(),
+            email: cleanTechEmail,
             specialty: formData.specialty,
             accessCode
           });
@@ -363,8 +375,14 @@ function TechnicianModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/10 dark:bg-black/20 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 my-8 animate-in fade-in zoom-in-95 duration-200">
+    <div 
+      className="fixed inset-0 bg-transparent flex items-start sm:items-center justify-center p-4 z-50 overflow-y-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl max-w-lg w-full p-6 sm:p-7 border border-gray-100 dark:border-gray-700 my-4 sm:my-auto modal-enter"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-700 mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
