@@ -100,3 +100,67 @@ export async function lockEmailRegistration(email: string, uid: string, role: st
     createdAt: new Date().toISOString()
   }, { merge: true });
 }
+
+/**
+ * Masque une adresse e-mail pour affichage sécurisé (ex: utilisateur@gmail.com -> uti*****@gmail.com)
+ */
+export function maskEmail(email: string): string {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes('@')) return email;
+  const [local, domain] = normalized.split('@');
+  if (local.length <= 2) {
+    return `${local[0]}*@${domain}`;
+  }
+  return `${local.slice(0, 3)}*****@${domain}`;
+}
+
+/**
+ * Génère un code PIN à 6 chiffres avec un générateur cryptographique sécurisé
+ */
+export function generateSecurePin(): string {
+  const array = new Uint32Array(1);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(array);
+  } else if (typeof globalThis !== 'undefined' && globalThis.crypto) {
+    globalThis.crypto.getRandomValues(array);
+  } else {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+  const code = (array[0] % 900000) + 100000;
+  return code.toString();
+}
+
+/**
+ * Génère un sel cryptographique aléatoire de 16 octets en hexadécimal
+ */
+export function generateSalt(): string {
+  const bytes = new Uint8Array(16);
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(bytes);
+  } else if (typeof globalThis !== 'undefined' && globalThis.crypto) {
+    globalThis.crypto.getRandomValues(bytes);
+  }
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Hache un code PIN avec son sel via SHA-256
+ */
+export async function hashPin(pin: string, salt: string): Promise<string> {
+  const input = `${salt}_immogest_${pin}`;
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16);
+}
+

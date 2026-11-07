@@ -32,7 +32,8 @@ import {
   Bell,
   FileSignature,
   ExternalLink,
-  FileCheck2
+  FileCheck2,
+  FileText
 } from 'lucide-react';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { PhotoModal } from '../components/PhotoModal';
@@ -43,6 +44,7 @@ import {
   TerminationProcedure 
 } from '../services/terminationEngine';
 import { Messages } from './Messages';
+import { uploadPaymentProofFile, validateProofFile, formatFileSize } from '../services/storageService';
 import { PaymentProofUpload } from '../components/PaymentProofUpload';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -301,6 +303,10 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
     try { return localStorage.getItem('tenant_accountNumber') || ''; } catch { return ''; }
   });
   const [proofImage, setProofImage] = useState<string>('');
+  const [proofFileName, setProofFileName] = useState<string>('');
+  const [proofFileType, setProofFileType] = useState<string>('');
+  const [proofFileSize, setProofFileSize] = useState<number>(0);
+  const [proofUploadProgress, setProofUploadProgress] = useState<number | null>(null);
   const [proofNote, setProofNote] = useState<string>('');
   const [paymentResult, setPaymentResult] = useState<string>('');
   const [failReason, setFailReason] = useState<string>('');
@@ -543,33 +549,35 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
     });
   };
 
-  // Image compressor for proof screenshots
-  const handleProofImageUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_DIM = 1000;
-        if (width > height && width > MAX_DIM) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else if (height > MAX_DIM) {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const compressed = canvas.toDataURL('image/jpeg', 0.7);
-        setProofImage(compressed);
-      };
-      img.src = ev.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+  // Multi-tier proof upload & validation handler
+  const handleProofFileSelected = async (file: File) => {
+    if (!file) return;
+    try {
+      setProofUploadProgress(15);
+      const val = await validateProofFile(file);
+      if (!val.valid) {
+        alert(val.error || "Fichier de justificatif invalide ou non autorisé.");
+        setProofUploadProgress(null);
+        return;
+      }
+
+      setProofFileName(file.name);
+      setProofFileSize(file.size);
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      setProofFileType(isPdf ? 'application/pdf' : file.type || 'image/jpeg');
+
+      const uploaded = await uploadPaymentProofFile(file, tenant?.id || 'public', (pct) => {
+        setProofUploadProgress(pct);
+      });
+
+      setProofImage(uploaded.url);
+      setProofUploadProgress(100);
+      setTimeout(() => setProofUploadProgress(null), 1000);
+    } catch (err: any) {
+      console.error("Erreur téléversement justificatif:", err);
+      alert(err.message || "Impossible de téléverser ce justificatif.");
+      setProofUploadProgress(null);
+    }
   };
 
   // Process and Submit Payment or Proof
@@ -638,7 +646,43 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
       // 1. Add to payments first
       const paymentRef = await addDoc(collection(db, 'payments'), paymentRecord);
 
-      // 2. Also register in paymentProofs for landlord's review queue
+      // 2. Register in unified payment_proofs collection
+      await addDoc(collection(db, 'payment_proofs'), {
+        paymentId: paymentRef.id,
+        amount: numAmount,
+        currency: 'USD',
+        paymentDate: now.split('T')[0],
+        date: now,
+        paymentType,
+        type: paymentType,
+        monthKey,
+        paymentMethod: paymentRecord.method,
+        method: paymentRecord.method,
+        transactionReference: proofNote || accountNumber || `REF-${Date.now().toString().slice(-6)}`,
+        comment: proofNote || paymentRecord.notes,
+        notes: paymentRecord.notes,
+        proofUrl: proofImage || '',
+        files: proofImage ? [{
+          url: proofImage,
+          name: proofFileName || 'justificatif_paiement',
+          size: proofFileSize || 0,
+          type: proofFileType || 'image/jpeg'
+        }] : [],
+        fileCount: proofImage ? 1 : 0,
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        tenantEmail: tenant.email || '',
+        tenantPhone: tenant.phone || '',
+        landlordId: tenant.landlordId,
+        propertyId: tenant.propertyId || '',
+        propertyName: tenant.propertyName || tenant.address || 'Bien locatif',
+        unitNumber: tenant.unitNumber || '',
+        status: 'En attente de vérification',
+        createdAt: now,
+        updatedAt: now
+      });
+
+      // 2b. Also register in legacy paymentProofs for backwards compatibility
       await addDoc(collection(db, 'paymentProofs'), {
         paymentId: paymentRef.id,
         amount: numAmount,
@@ -655,15 +699,15 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
         createdAt: now
       });
 
-      // 3. Notify landlord
+      // 3. Notify landlord with both userId and landlordId
       if (tenant.landlordId) {
         await addDoc(collection(db, 'notifications'), {
           userId: tenant.landlordId,
           landlordId: tenant.landlordId,
           tenantId: tenant.id,
-          type: 'payment',
-          title: `Paiement en attente de confirmation : ${tenant.name}`,
-          message: `Le locataire ${tenant.name} a déclaré un paiement de ${numAmount} $ pour ${paymentType} (${paymentRecord.method}). Veuillez vérifier et confirmer l'encaissement.`,
+          type: 'PAYMENT_PROOF_SUBMITTED',
+          title: `Preuve de paiement reçue : ${tenant.name}`,
+          message: `Le locataire ${tenant.name} a transmis un justificatif de paiement de ${numAmount} $ pour ${paymentType} (${paymentRecord.method}). Veuillez examiner la preuve.`,
           createdAt: now,
           read: false
         }).catch(console.warn);
@@ -1652,25 +1696,59 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                 {paymentMethod === 'Preuve Photo' && (
                   <div className="space-y-3">
                     <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      Téléverser votre capture / photo du reçu
+                      Téléverser votre reçu, capture ou justificatif (JPG, PNG, WEBP, PDF)
                     </label>
                     <input 
                       type="file" 
-                      accept="image/*" 
+                      accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf" 
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) handleProofImageUpload(file);
+                        if (file) handleProofFileSelected(file);
                       }}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-500"
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-500 cursor-pointer"
                     />
 
+                    {/* Upload progress indicator */}
+                    {proofUploadProgress !== null && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 animate-in fade-in">
+                        <div className="flex justify-between text-xs font-semibold text-emerald-800">
+                          <span>Téléversement et vérification...</span>
+                          <span>{proofUploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-emerald-200 overflow-hidden">
+                          <div 
+                            className="h-full bg-emerald-600 rounded-full transition-all duration-300"
+                            style={{ width: `${proofUploadProgress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {proofImage && (
-                      <div className="relative rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 p-2">
-                        <img src={proofImage} alt="Preuve" className="w-full h-44 object-contain rounded-xl" />
+                      <div className="relative rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 p-3">
+                        {proofFileType === 'application/pdf' ? (
+                          <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200">
+                            <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                              <FileText className="w-5 h-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-xs font-bold text-gray-900 block truncate">{proofFileName || 'Document justificatif.pdf'}</span>
+                              <span className="text-[10px] text-gray-500">{formatFileSize(proofFileSize)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <img src={proofImage} alt="Preuve" className="w-full h-44 object-contain rounded-xl" />
+                        )}
                         <button
                           type="button"
-                          onClick={() => setProofImage('')}
-                          className="absolute top-4 right-4 bg-red-600 text-white p-1.5 rounded-full shadow hover:bg-red-700"
+                          onClick={() => {
+                            setProofImage('');
+                            setProofFileName('');
+                            setProofFileType('');
+                            setProofFileSize(0);
+                          }}
+                          className="absolute top-4 right-4 bg-red-600 text-white p-1.5 rounded-full shadow hover:bg-red-700 cursor-pointer"
+                          title="Supprimer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1766,10 +1844,12 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                 name: tenant.name,
                 email: tenant.email,
                 phone: tenant.phone,
+                userId: tenant.userId || auth.currentUser?.uid || '',
                 landlordId: tenant.landlordId,
                 propertyId: tenant.propertyId,
                 propertyName: tenant.propertyName || tenant.address,
                 unitNumber: tenant.unitNumber,
+                contractId: tenant.contractId || contract?.id || '',
                 rentAmount: tenant.monthlyRent,
                 currency: tenant.currency || 'USD'
               }}

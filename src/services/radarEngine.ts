@@ -9,6 +9,23 @@ import {
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
+/**
+ * Recursively removes any undefined properties from an object so Firestore addDoc/setDoc does not fail.
+ */
+export function sanitizeFirestorePayload<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        result[key] = sanitizeFirestorePayload(value);
+      } else {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+}
+
 export type RadarAlertPriority = 'Critique' | 'Haute' | 'Moyenne' | 'Info';
 
 export type RadarAlertStatus = 'active' | 'resolved' | 'dismissed';
@@ -204,11 +221,11 @@ export async function runRadarAnalysis(landlordId: string): Promise<{
           status: 'active',
           entityType: 'tenant',
           entityId: t.id,
-          propertyId: t.propertyId,
-          propertyName: prop ? prop.name : t.address,
-          tenantId: t.id,
-          tenantName: t.name,
-          tenantPhone: t.phone,
+          propertyId: t.propertyId || '',
+          propertyName: (prop ? prop.name : t.address) || 'Bien',
+          tenantId: t.id || '',
+          tenantName: t.name || 'Locataire',
+          tenantPhone: t.phone || '',
           dedupKey,
           isAnomaly: false,
           metadata: { remaining, rentAmount, monthlyPaid, month: yearMonthKey },
@@ -241,18 +258,18 @@ export async function runRadarAnalysis(landlordId: string): Promise<{
           type: 'expiring_contract',
           category: 'Baux',
           priority: diffDays <= 15 ? 'Critique' : 'Haute',
-          title: `Bail arrivant à échéance : ${t ? t.name : 'Locataire'}`,
+          title: `Bail arrivant à échéance : ${t ? t.name : c.tenantName || 'Locataire'}`,
           description: diffDays > 0
             ? `Le contrat de bail pour "${prop ? prop.name : 'Logement'}" expire dans ${diffDays} jour(s) (le ${endDate.toLocaleDateString('fr-FR')}). Pensez à convenir du renouvellement ou de l'état des lieux.`
             : `Le contrat de bail est arrivé à terme le ${endDate.toLocaleDateString('fr-FR')} sans renouvellement enregistré.`,
           status: 'active',
           entityType: 'contract',
           entityId: c.id,
-          propertyId: c.propertyId,
-          propertyName: prop?.name,
-          tenantId: c.tenantId,
-          tenantName: t?.name,
-          tenantPhone: t?.phone,
+          propertyId: c.propertyId || '',
+          propertyName: prop?.name || 'Logement',
+          tenantId: c.tenantId || '',
+          tenantName: t?.name || c.tenantName || 'Locataire',
+          tenantPhone: t?.phone || c.tenantPhone || '',
           dedupKey,
           isAnomaly: false,
           metadata: { diffDays, endDate: c.endDate },
@@ -407,11 +424,11 @@ export async function runRadarAnalysis(landlordId: string): Promise<{
           status: 'active',
           entityType: 'maintenance',
           entityId: issue.id,
-          propertyId: issue.propertyId,
-          propertyName: prop ? prop.name : issue.title,
-          tenantId: issue.tenantId,
-          tenantName: t?.name,
-          tenantPhone: t?.phone,
+          propertyId: issue.propertyId || '',
+          propertyName: (prop ? prop.name : issue.title) || 'Bien',
+          tenantId: issue.tenantId || '',
+          tenantName: t?.name || issue.tenantName || 'Locataire',
+          tenantPhone: t?.phone || issue.tenantPhone || '',
           dedupKey,
           isAnomaly: false,
           metadata: { hoursPending, priority: issue.priority, hasTech },
@@ -446,13 +463,15 @@ export async function runRadarAnalysis(landlordId: string): Promise<{
             category: 'Finances',
             priority: 'Haute',
             title: `Paiement potentiellement dupliqué : ${p1.amount} $`,
-            description: `Deux règlements identiques de ${p1.amount} $ pour "${p1.type}" enregistrés à ${Math.round(diffHours)}h d'intervalle pour ${t ? t.name : 'le locataire'}. Nécessite un contrôle comptable.`,
+            description: `Deux règlements identiques de ${p1.amount} $ pour "${p1.type}" enregistrés à ${Math.round(diffHours)}h d'intervalle pour ${t ? t.name : p1.tenantName || 'le locataire'}. Nécessite un contrôle comptable.`,
             status: 'active',
             entityType: 'payment',
             entityId: p1.id,
-            tenantId: p1.tenantId,
-            tenantName: t?.name,
-            tenantPhone: t?.phone,
+            propertyId: p1.propertyId || '',
+            propertyName: p1.propertyName || '',
+            tenantId: p1.tenantId || '',
+            tenantName: t?.name || p1.tenantName || 'Locataire',
+            tenantPhone: t?.phone || '',
             dedupKey,
             isAnomaly: true,
             metadata: { p1Id: p1.id, p2Id: p2.id, amount: p1.amount, diffHours },
@@ -599,8 +618,9 @@ export async function runRadarAnalysis(landlordId: string): Promise<{
   for (const alert of detectedAlerts) {
     const existing = existingAlertsMap.get(alert.dedupKey);
     if (!existing) {
-      // Create new active alert
-      await addDoc(collection(db, 'radar_alerts'), alert);
+      // Create new active alert (strip any undefined values for Firestore serialization)
+      const cleanAlert = sanitizeFirestorePayload(alert);
+      await addDoc(collection(db, 'radar_alerts'), cleanAlert);
       newAlertsCount++;
     } else if (existing.status === 'active') {
       // Alert already active, no duplicate needed

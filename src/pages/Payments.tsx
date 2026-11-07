@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, getDocs, doc, getDoc, addDoc, updateDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { 
   CreditCard, 
   Search, 
@@ -53,8 +53,11 @@ export function Payments() {
   const [cancellingPayment, setCancellingPayment] = useState<PaymentRecord | null>(null);
   const [duplicateInspection, setDuplicateInspection] = useState<PaymentRecord[] | null>(null);
 
+  const [searchParams] = useSearchParams();
   // Status Filter Tabs
-  const [activeTab, setActiveTab] = useState<'all' | 'confirmed' | 'pending' | 'proofs' | 'disputed' | 'unpaid' | 'adjustments'>('all');
+  const [userSelectedTab, setUserSelectedTab] = useState<'all' | 'confirmed' | 'pending' | 'proofs' | 'disputed' | 'unpaid' | 'adjustments' | null>(null);
+  const activeTab = userSelectedTab ?? (searchParams.get('tab') === 'proofs' ? 'proofs' : 'all');
+  const setActiveTab = (tab: 'all' | 'confirmed' | 'pending' | 'proofs' | 'disputed' | 'unpaid' | 'adjustments') => setUserSelectedTab(tab);
 
   useEffect(() => {
     if (!auth.currentUser) return;

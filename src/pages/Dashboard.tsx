@@ -185,7 +185,11 @@ export function Dashboard() {
     // Listen to payment proofs awaiting verification
     const qProofs = query(collection(db, 'payment_proofs'), where('landlordId', '==', uid));
     const unsubProofs = onSnapshot(qProofs, (snapshot) => {
-      const proofsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter((x: any) => x.status === 'En attente de vérification' || x.status === 'En cours de vérification');
+      const proofsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter((x: any) => 
+        x.status === 'En attente de vérification' || 
+        x.status === 'En cours de vérification' || 
+        x.status === 'En attente'
+      );
       setPendingPaymentProofs(proofsList);
     }, () => {});
 
@@ -315,7 +319,7 @@ export function Dashboard() {
         desc: `Versement pour ${proof.paymentType || 'Loyer'} via ${proof.paymentMethod || 'Mobile Money'} (Réf: ${proof.transactionReference || 'N/A'}) - À contrôler et valider`,
         badge: 'Preuve à vérifier',
         actionLabel: 'Examiner la preuve',
-        link: '/payments'
+        link: '/payments?tab=proofs'
       });
     });
 

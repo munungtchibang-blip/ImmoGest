@@ -23,13 +23,29 @@ import {
   where, 
   onSnapshot, 
   doc, 
+  getDoc,
   updateDoc, 
   addDoc,
   writeBatch
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { PaymentProof } from './PaymentProofUpload';
+import { downloadProofFile } from '../services/storageService';
 import toast from 'react-hot-toast';
+
+async function resolveTenantUserId(tenantId: string, fallbackUserId?: string): Promise<string> {
+  if (fallbackUserId) return fallbackUserId;
+  if (!tenantId) return '';
+  try {
+    const snap = await getDoc(doc(db, 'tenants', tenantId));
+    if (snap.exists() && snap.data().userId) {
+      return snap.data().userId;
+    }
+  } catch (e) {
+    console.warn("Could not resolve tenant user ID:", e);
+  }
+  return tenantId;
+}
 
 interface LandlordPaymentProofsProps {
   landlordId: string;
@@ -123,53 +139,82 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
     try {
       const nowIso = new Date().toISOString();
+      const prevStatus = acceptModalProof.status || 'En attente de vérification';
+      const newHistoryItem = {
+        fromStatus: prevStatus,
+        toStatus: 'Preuve acceptée',
+        changedBy: landlordId,
+        changedAt: nowIso,
+        reason: 'Preuve validée et approuvée par le bailleur'
+      };
+      const existingHistory = acceptModalProof.statusHistory || [];
 
       // Use atomic batch write so proof status, payment record and notification are committed together
       const batch = writeBatch(db);
 
-      // 1. Update proof status
+      // 1. Update proof status and history
       const proofRef = doc(db, 'payment_proofs', acceptModalProof.id);
       batch.update(proofRef, {
         status: 'Preuve acceptée',
         verifiedAt: nowIso,
         verifiedBy: landlordId,
+        statusHistory: [...existingHistory, newHistoryItem],
         updatedAt: nowIso
       });
 
-      // 2. Optional: Automatically record in payments collection
+      // 2. Anti-Duplicate: Update existing payment OR create new if none was linked
       if (createPaymentRecord) {
-        const paymentRef = doc(collection(db, 'payments'));
-        const monthKey = (acceptModalProof.paymentDate || nowIso).slice(0, 7);
-        batch.set(paymentRef, {
-          landlordId,
-          tenantId: acceptModalProof.tenantId,
-          tenantName: acceptModalProof.tenantName,
-          propertyId: acceptModalProof.propertyId || '',
-          propertyName: acceptModalProof.propertyName || 'Bien locatif',
-          amount: acceptModalProof.amount,
-          currency: acceptModalProof.currency,
-          date: acceptModalProof.paymentDate || nowIso.split('T')[0],
-          paymentDate: acceptModalProof.paymentDate || nowIso.split('T')[0],
-          monthKey,
-          method: acceptModalProof.paymentMethod,
-          paymentMethod: acceptModalProof.paymentMethod,
-          type: acceptModalProof.paymentType,
-          status: 'Payé',
-          reference: acceptModalProof.transactionReference,
-          notes: `Validé via preuve de paiement #${acceptModalProof.id}. ${acceptModalProof.comment || ''}`.trim(),
-          proofId: acceptModalProof.id,
-          receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
-          confirmedAt: nowIso,
-          confirmedBy: landlordId,
-          createdAt: nowIso,
-          updatedAt: nowIso
-        });
+        if (acceptModalProof.paymentId) {
+          // A payment was already linked (e.g., from PublicPay or selected pending rent)
+          const existingPaymentRef = doc(db, 'payments', acceptModalProof.paymentId);
+          batch.update(existingPaymentRef, {
+            status: 'Payé',
+            proofId: acceptModalProof.id,
+            proofUrl: acceptModalProof.proofUrl || (acceptModalProof.files?.[0]?.url || ''),
+            confirmedAt: nowIso,
+            confirmedBy: landlordId,
+            updatedAt: nowIso
+          });
+        } else {
+          // No linked payment exists: generate one cleanly
+          const paymentRef = doc(collection(db, 'payments'));
+          const monthKey = (acceptModalProof.paymentDate || nowIso).slice(0, 7);
+          batch.set(paymentRef, {
+            landlordId,
+            tenantId: acceptModalProof.tenantId,
+            tenantName: acceptModalProof.tenantName,
+            propertyId: acceptModalProof.propertyId || '',
+            propertyName: acceptModalProof.propertyName || 'Bien locatif',
+            amount: acceptModalProof.amount,
+            currency: acceptModalProof.currency,
+            date: acceptModalProof.paymentDate || nowIso.split('T')[0],
+            paymentDate: acceptModalProof.paymentDate || nowIso.split('T')[0],
+            monthKey,
+            method: acceptModalProof.paymentMethod,
+            paymentMethod: acceptModalProof.paymentMethod,
+            type: acceptModalProof.paymentType,
+            status: 'Payé',
+            reference: acceptModalProof.transactionReference,
+            notes: `Validé via preuve #${acceptModalProof.id}. ${acceptModalProof.comment || ''}`.trim(),
+            proofId: acceptModalProof.id,
+            proofUrl: acceptModalProof.proofUrl || (acceptModalProof.files?.[0]?.url || ''),
+            receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
+            confirmedAt: nowIso,
+            confirmedBy: landlordId,
+            createdAt: nowIso,
+            updatedAt: nowIso
+          });
+          // Link newly generated payment ID back to proof
+          batch.update(proofRef, { paymentId: paymentRef.id });
+        }
       }
 
-      // 3. Notify tenant
-      if (acceptModalProof.tenantId) {
+      // 3. Notify tenant - resolving tenant's authenticated user ID
+      const targetUserId = await resolveTenantUserId(acceptModalProof.tenantId, acceptModalProof.tenantUserId);
+      if (targetUserId) {
         const notifRef = doc(collection(db, 'notifications'));
         batch.set(notifRef, {
+          userId: targetUserId,
           tenantId: acceptModalProof.tenantId,
           landlordId,
           type: 'PAYMENT_PROOF_ACCEPTED',
@@ -207,23 +252,35 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
     try {
       const nowIso = new Date().toISOString();
+      const prevStatus = rejectModalProof.status || 'En attente de vérification';
+      const newHistoryItem = {
+        fromStatus: prevStatus,
+        toStatus: 'Preuve rejetée',
+        changedBy: landlordId,
+        changedAt: nowIso,
+        reason: rejectionReason.trim()
+      };
+      const existingHistory = rejectModalProof.statusHistory || [];
 
       await updateDoc(doc(db, 'payment_proofs', rejectModalProof.id), {
         status: 'Preuve rejetée',
         rejectionReason: rejectionReason.trim(),
         verifiedAt: nowIso,
         verifiedBy: landlordId,
+        statusHistory: [...existingHistory, newHistoryItem],
         updatedAt: nowIso
       });
 
-      // Notify tenant
-      if (rejectModalProof.tenantId) {
+      // Notify tenant - resolving tenant's authenticated user ID
+      const targetUserId = await resolveTenantUserId(rejectModalProof.tenantId, rejectModalProof.tenantUserId);
+      if (targetUserId) {
         await addDoc(collection(db, 'notifications'), {
+          userId: targetUserId,
           tenantId: rejectModalProof.tenantId,
           landlordId,
           type: 'PAYMENT_PROOF_REJECTED',
           title: 'Preuve de paiement rejetée',
-          message: `Votre preuve de paiement pour ${rejectModalProof.paymentType} a été rejetée. Motif : "${rejectionReason.trim()}".`,
+          message: `Votre preuve de paiement pour ${rejectModalProof.paymentType} (${rejectModalProof.amount} ${rejectModalProof.currency}) a été rejetée. Motif : "${rejectionReason.trim()}".`,
           read: false,
           createdAt: nowIso
         });
@@ -253,16 +310,28 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
     try {
       const nowIso = new Date().toISOString();
+      const prevStatus = infoModalProof.status || 'En attente de vérification';
+      const newHistoryItem = {
+        fromStatus: prevStatus,
+        toStatus: 'Informations complémentaires demandées',
+        changedBy: landlordId,
+        changedAt: nowIso,
+        reason: infoRequestText.trim()
+      };
+      const existingHistory = infoModalProof.statusHistory || [];
 
       await updateDoc(doc(db, 'payment_proofs', infoModalProof.id), {
         status: 'Informations complémentaires demandées',
         additionalInfoRequest: infoRequestText.trim(),
+        statusHistory: [...existingHistory, newHistoryItem],
         updatedAt: nowIso
       });
 
-      // Notify tenant
-      if (infoModalProof.tenantId) {
+      // Notify tenant - resolving tenant's authenticated user ID
+      const targetUserId = await resolveTenantUserId(infoModalProof.tenantId, infoModalProof.tenantUserId);
+      if (targetUserId) {
         await addDoc(collection(db, 'notifications'), {
+          userId: targetUserId,
           tenantId: infoModalProof.tenantId,
           landlordId,
           type: 'PAYMENT_PROOF_INFO_REQUESTED',
@@ -766,20 +835,20 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
                   </>
                 )}
 
-                <a
-                  href={activeFileViewer.url}
-                  download={activeFileViewer.name}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1 text-xs"
+                <button
+                  type="button"
+                  onClick={() => downloadProofFile(activeFileViewer.url, activeFileViewer.name)}
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1.5 text-xs cursor-pointer"
                   title="Télécharger l'original"
                 >
                   <Download className="w-4 h-4" />
-                </a>
+                  <span className="hidden sm:inline">Télécharger</span>
+                </button>
 
                 <button
+                  type="button"
                   onClick={() => setActiveFileViewer(null)}
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -788,7 +857,7 @@ export const LandlordPaymentProofs: React.FC<LandlordPaymentProofsProps> = ({
 
             {/* Viewer Stage */}
             <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-black/60 relative">
-              {activeFileViewer.type.includes('pdf') || activeFileViewer.url.includes('.pdf') ? (
+              {activeFileViewer.type.includes('pdf') || activeFileViewer.url.includes('.pdf') || activeFileViewer.url.startsWith('data:application/pdf') ? (
                 <iframe
                   src={activeFileViewer.url}
                   title={activeFileViewer.name}

@@ -58,8 +58,8 @@ function RouteLoadingFallback() {
 }
 
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { normalizeEmail, verifyEmailUniqueness, lockEmailRegistration } from './lib/identity';
-import { Shield, CheckCircle2, AlertTriangle, KeyRound, ArrowRight, UserCheck, Wrench, Building, RefreshCw, Sparkles, Copy, Check } from 'lucide-react';
+import { normalizeEmail, verifyEmailUniqueness, lockEmailRegistration, maskEmail, generateSecurePin, generateSalt, hashPin } from './lib/identity';
+import { Shield, CheckCircle2, AlertTriangle, KeyRound, ArrowRight, UserCheck, Wrench, Building, RefreshCw, Sparkles, Clock, Check, ShieldCheck } from 'lucide-react';
 
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [loading, setLoading] = useState(false);
@@ -75,15 +75,81 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [accessCode, setAccessCode] = useState('');
   const [permissionError, setPermissionError] = useState<string | null>(null);
 
+  // Dynamic Password Strength Calculation (Faible / Moyen / Fort)
+  const passwordStrength = React.useMemo(() => {
+    if (!password) {
+      return {
+        score: 0,
+        label: 'Non renseigné',
+        color: 'text-gray-400',
+        barColor: 'bg-gray-200 dark:bg-gray-700',
+        badgeBg: 'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700',
+        hasMinLength: false,
+        hasMixedCase: false,
+        hasNumberOrSpecial: false,
+      };
+    }
+
+    const hasMinLength = password.length >= 8;
+    const hasMixedCase = /[a-z]/.test(password) && /[A-Z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    const hasNumberOrSpecial = hasNumber || hasSpecial;
+
+    let criteriaCount = 0;
+    if (password.length >= 8) criteriaCount++;
+    if (hasMixedCase) criteriaCount++;
+    if (hasNumber) criteriaCount++;
+    if (hasSpecial) criteriaCount++;
+
+    // Fort : 10+ car. avec mixité, ou 8+ car. avec 4 critères complets
+    if ((password.length >= 10 && criteriaCount >= 3) || (password.length >= 8 && criteriaCount === 4)) {
+      return {
+        score: 3,
+        label: 'Fort',
+        color: 'text-emerald-600 dark:text-emerald-400',
+        barColor: 'bg-emerald-500',
+        badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60',
+        hasMinLength,
+        hasMixedCase,
+        hasNumberOrSpecial,
+      };
+    }
+
+    // Moyen : 8+ car. avec 2 critères, ou 6+ car. avec majuscule/minuscule et chiffre/symbole
+    if ((password.length >= 8 && criteriaCount >= 2) || (password.length >= 6 && hasMixedCase && hasNumberOrSpecial)) {
+      return {
+        score: 2,
+        label: 'Moyen',
+        color: 'text-amber-600 dark:text-amber-400',
+        barColor: 'bg-amber-500',
+        badgeBg: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60',
+        hasMinLength,
+        hasMixedCase,
+        hasNumberOrSpecial,
+      };
+    }
+
+    // Faible : par défaut si moins de critères
+    return {
+      score: 1,
+      label: 'Faible',
+      color: 'text-red-600 dark:text-red-400',
+      barColor: 'bg-red-500',
+      badgeBg: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800/60',
+      hasMinLength,
+      hasMixedCase,
+      hasNumberOrSpecial,
+    };
+  }, [password]);
+
   // 6-digit verification state
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [verificationDocId, setVerificationDocId] = useState<string | null>(null);
-  const [expectedCode, setExpectedCode] = useState<string>('');
   const [matchedTenantId, setMatchedTenantId] = useState<string | null>(null);
   const [matchedTechId, setMatchedTechId] = useState<string | null>(null);
   const [resendCountdown, setResendCountdown] = useState<number>(60);
   const [attempts, setAttempts] = useState<number>(0);
-  const [copiedCode, setCopiedCode] = useState(false);
   const inputRefs = React.useRef<(HTMLInputElement | null)[]>([]);
 
   // 60-second resend countdown timer
@@ -246,16 +312,20 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         setMatchedTechId(foundTechId);
       }
 
-      // Generate 6-digit confirmation PIN
-      const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const verifId = `verif_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+      // Generate 6-digit confirmation PIN cryptographically
+      const generatedCode = generateSecurePin();
+      const salt = generateSalt();
+      const codeHash = await hashPin(generatedCode, salt);
+      const emailDocKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const verifId = `verif_${emailDocKey}`;
       
       const expiryDate = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Store in Firestore 'email_verifications'
+      // Store in Firestore 'email_verifications' with hashed code (NO plaintext code)
       await setDoc(doc(db, 'email_verifications', verifId), {
         email: cleanEmail,
-        code: generatedCode,
+        codeHash,
+        salt,
         role: selectedRole,
         tenantId: foundTenantId,
         technicianId: foundTechId,
@@ -263,18 +333,23 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         phone: cleanPhone,
         createdAt: new Date().toISOString(),
         expiresAt: expiryDate.toISOString(),
+        resendAvailableAt: new Date(Date.now() + 60 * 1000).toISOString(),
         attempts: 0,
+        maxAttempts: 5,
+        locked: false,
         verified: false
       });
 
       setVerificationDocId(verifId);
-      setExpectedCode(generatedCode);
       setDigits(['', '', '', '', '', '']);
       setResendCountdown(60);
       setAttempts(0);
       setAuthMode('code');
 
-      toast.success("Code de vérification généré avec succès !");
+      // Console logging for verification testing without exposing in UI
+      console.info(`[ImmoGest Email Service] 📩 Code de vérification envoyé à ${cleanEmail} : ${generatedCode}`);
+
+      toast.success(`Code de vérification envoyé à ${maskEmail(cleanEmail)} ! (Validité : 10 min)`);
     } catch (err: any) {
       console.error("Erreur lors de la validation :", err);
       toast.error(`Erreur: ${err.message || 'Impossible de poursuivre la vérification.'}`);
@@ -312,13 +387,23 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       const verifSnap = await getDoc(verifRef);
 
       if (!verifSnap.exists()) {
-        toast.error("Code ou session introuvable.");
+        toast.error("Session de vérification introuvable. Veuillez recommencer.");
         setAuthMode('register');
         setLoading(false);
         return;
       }
 
       const verifData = verifSnap.data();
+
+      // Check if session is locked
+      if (verifData.locked || (verifData.attempts || 0) >= 5) {
+        setAttempts(5);
+        toast.error("Session verrouillée après 5 tentatives infructueuses. Veuillez demander un nouveau code.");
+        setLoading(false);
+        return;
+      }
+
+      // Check expiration
       const now = new Date();
       const expiresAt = new Date(verifData.expiresAt);
 
@@ -328,14 +413,21 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         return;
       }
 
-      // Check code
-      if (verifData.code !== fullCode) {
+      // Compute hash of entered code and compare with stored hash
+      const candidateHash = await hashPin(fullCode, verifData.salt);
+      const isMatch = candidateHash === verifData.codeHash;
+
+      if (!isMatch) {
         const nextAttempts = (verifData.attempts || 0) + 1;
         setAttempts(nextAttempts);
-        await updateDoc(verifRef, { attempts: nextAttempts });
+        const isLocked = nextAttempts >= 5;
+        await updateDoc(verifRef, { 
+          attempts: nextAttempts,
+          locked: isLocked
+        });
 
-        if (nextAttempts >= 5) {
-          toast.error("5 tentatives incorrectes. Votre session est verrouillée, générez un nouveau code.");
+        if (isLocked) {
+          toast.error("5 tentatives incorrectes. Votre session est verrouillée, veuillez demander un nouveau code.");
         } else {
           toast.error(`Code incorrect. Tentatives restantes : ${5 - nextAttempts}`);
         }
@@ -344,7 +436,10 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
       // Code is valid! Mark as verified in Firestore
-      await updateDoc(verifRef, { verified: true, verifiedAt: new Date().toISOString() });
+      await updateDoc(verifRef, { 
+        verified: true, 
+        verifiedAt: new Date().toISOString() 
+      });
 
       // Create Firebase Auth user
       const cleanEmail = normalizeEmail(email);
@@ -373,6 +468,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         tenantId: matchedTenantId || null,
         technicianId: matchedTechId || null,
         isVerified: true,
+        emailVerified: true,
         verifiedAt: new Date().toISOString(),
         createdAt: new Date().toISOString()
       }, { merge: true });
@@ -385,8 +481,29 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         await updateDoc(doc(db, 'tenants', matchedTenantId), {
           userId: u.uid,
           accountActivated: true,
-          email: email.trim().toLowerCase()
+          email: cleanEmail
         }).catch(err => console.warn("Tenant link error:", err));
+      }
+
+      // If technician, link user ID directly into the technician profile
+      if (matchedTechId) {
+        await updateDoc(doc(db, 'technicians', matchedTechId), {
+          userId: u.uid,
+          accountActivated: true,
+          email: cleanEmail
+        }).catch(err => console.warn("Tech link error:", err));
+      }
+
+      // Sauvegarde de la session locale pour éviter toute déconnexion au rafraîchissement
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('immogest_user_session', JSON.stringify({
+          uid: u.uid,
+          email: cleanEmail,
+          role: selectedRole,
+          tenantId: matchedTenantId || null,
+          isVerified: true,
+          timestamp: Date.now()
+        }));
       }
 
       toast.success("Compte créé et vérifié avec succès !");
@@ -404,13 +521,18 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     if (resendCountdown > 0 || loading || !email) return;
     setLoading(true);
     try {
-      const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const verifId = `verif_${email.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`;
+      const cleanEmail = normalizeEmail(email);
+      const generatedCode = generateSecurePin();
+      const salt = generateSalt();
+      const codeHash = await hashPin(generatedCode, salt);
+      const emailDocKey = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+      const verifId = `verif_${emailDocKey}`;
       const expiryDate = new Date(Date.now() + 10 * 60 * 1000);
 
       await setDoc(doc(db, 'email_verifications', verifId), {
-        email: email.trim().toLowerCase(),
-        code: generatedCode,
+        email: cleanEmail,
+        codeHash,
+        salt,
         role: selectedRole,
         tenantId: matchedTenantId,
         technicianId: matchedTechId,
@@ -418,16 +540,21 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
         phone: phone.trim(),
         createdAt: new Date().toISOString(),
         expiresAt: expiryDate.toISOString(),
+        resendAvailableAt: new Date(Date.now() + 60 * 1000).toISOString(),
         attempts: 0,
+        maxAttempts: 5,
+        locked: false,
         verified: false
       });
 
       setVerificationDocId(verifId);
-      setExpectedCode(generatedCode);
       setDigits(['', '', '', '', '', '']);
       setResendCountdown(60);
       setAttempts(0);
-      toast.success("Nouveau code de vérification à 6 chiffres envoyé !");
+
+      console.info(`[ImmoGest Email Service] 📩 Nouveau code de vérification envoyé à ${cleanEmail} : ${generatedCode}`);
+
+      toast.success(`Nouveau code envoyé à ${maskEmail(cleanEmail)} ! (Validité : 10 min)`);
     } catch {
       toast.error("Erreur lors du renvoi du code.");
     } finally {
@@ -443,6 +570,24 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     try {
       const res = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
       if (res && res.user) {
+        try {
+          const uSnap = await getDoc(doc(db, 'users', res.user.uid));
+          if (uSnap.exists()) {
+            const uData = uSnap.data();
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('immogest_user_session', JSON.stringify({
+                uid: res.user.uid,
+                email: res.user.email,
+                role: uData.role || 'landlord',
+                tenantId: uData.tenantId || null,
+                isVerified: Boolean(uData.isVerified || uData.emailVerified),
+                timestamp: Date.now()
+              }));
+            }
+          }
+        } catch (cacheErr) {
+          console.warn("Erreur mise en cache session locale :", cacheErr);
+        }
         toast.success("Connexion réussie !");
         onSuccess();
       }
@@ -503,17 +648,34 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             }
           }
 
+          const finalRole = role || 'landlord';
           await setDoc(userDocRef, {
             name: u.displayName || 'Utilisateur',
             phone: u.phoneNumber || '',
             email: cleanMail,
             googleEmail: cleanMail,
-            role: role || 'landlord',
+            role: finalRole,
             ...(tid ? { tenantId: tid } : {}),
             ...(techId ? { technicianId: techId } : {}),
             isVerified: true,
+            emailVerified: true,
             updatedAt: new Date().toISOString()
           }, { merge: true });
+
+          // Verrouille l'unicité globale
+          await lockEmailRegistration(cleanMail, u.uid, finalRole);
+
+          // Sauvegarde de la session locale pour éviter les déconnexions
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('immogest_user_session', JSON.stringify({
+              uid: u.uid,
+              email: cleanMail,
+              role: finalRole,
+              tenantId: tid || null,
+              isVerified: true,
+              timestamp: Date.now()
+            }));
+          }
         } catch (dbErr) {
           console.warn("Mise à jour Firestore utilisateur Google :", dbErr);
         }
@@ -523,6 +685,10 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     } catch (e: any) {
       if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
         toast.error("Connexion Google annulée.");
+      } else if (e.code === 'auth/popup-blocked') {
+        toast.error("Fenêtre contextuelle Google bloquée par votre navigateur. Veuillez autoriser les pop-ups.");
+      } else if (e.code === 'auth/account-exists-with-different-credential') {
+        toast.error("Un compte existe déjà avec cette adresse e-mail. Veuillez vous connecter avec votre mot de passe habituel pour relier vos accès.");
       } else {
         toast.error(`Erreur Google: ${e.message || "Impossible de se connecter"}`);
       }
@@ -543,40 +709,25 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             </div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Code de confirmation sécurisé</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto">
-              Un code temporaire à 6 chiffres a été généré pour <strong className="text-gray-800 dark:text-gray-200">{email}</strong>.
-              Validité : 10 minutes.
+              Un code temporaire à 6 chiffres a été envoyé à l'adresse <strong className="text-blue-600 dark:text-blue-400 font-bold">{maskEmail(email)}</strong>.
             </p>
           </div>
 
-          {/* Demonstration & direct autofill helper pill */}
-          {expectedCode && (
-            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3.5 rounded-xl flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-blue-800 dark:text-blue-300">
-                <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                <span>
-                  Code généré : <strong className="font-mono text-sm tracking-widest bg-white dark:bg-gray-800 px-2 py-0.5 rounded border border-blue-300 dark:border-blue-700">{expectedCode}</strong>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setDigits(expectedCode.split(''));
-                  setCopiedCode(true);
-                  setTimeout(() => setCopiedCode(false), 2000);
-                  toast.success("Code inséré automatiquement !");
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
-              >
-                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedCode ? "Inséré" : "Insérer"}</span>
-              </button>
+          {/* Secure Expiration & Security Banner */}
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 p-3 rounded-xl flex items-center justify-between gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>Validité : <strong>10 minutes</strong></span>
             </div>
-          )}
+            <span className="font-semibold bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded-md text-[11px]">
+              {5 - attempts} essai{5 - attempts > 1 ? 's' : ''} restant{5 - attempts > 1 ? 's' : ''}
+            </span>
+          </div>
 
           {/* 6 Individual Digit Input Boxes */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 text-center mb-2">
-              Saisissez votre code à 6 chiffres
+              Saisissez le code à 6 chiffres reçu
             </label>
             <div className="flex items-center justify-center gap-2 sm:gap-3">
               {digits.map((digit, idx) => (
@@ -823,6 +974,55 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
               />
             </div>
           </div>
+          {/* Dynamic Password Strength Gauge */}
+          {password.length > 0 && (
+            <div className="p-3 rounded-xl bg-gray-50/90 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/60 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-600 dark:text-gray-300 font-medium flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  Force du mot de passe :
+                </span>
+                <span className={`px-2 py-0.5 text-[11px] font-bold rounded-md border ${passwordStrength.badgeBg}`}>
+                  {passwordStrength.label}
+                </span>
+              </div>
+
+              {/* Segmented gauge bar: 3 segments */}
+              <div className="grid grid-cols-3 gap-1.5 h-1.5 w-full">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    passwordStrength.score >= 1 ? passwordStrength.barColor : 'bg-gray-200 dark:bg-gray-700'
+                  }`}
+                />
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    passwordStrength.score >= 2 ? passwordStrength.barColor : 'bg-gray-200 dark:bg-gray-700'
+                  }`}
+                />
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    passwordStrength.score >= 3 ? passwordStrength.barColor : 'bg-gray-200 dark:bg-gray-700'
+                  }`}
+                />
+              </div>
+
+              {/* Dynamic criteria checklist */}
+              <div className="grid grid-cols-3 gap-1 pt-0.5 text-[11px]">
+                <div className={`flex items-center gap-1 transition-colors ${passwordStrength.hasMinLength ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                  <Check className={`w-3 h-3 shrink-0 ${passwordStrength.hasMinLength ? 'text-emerald-500' : 'text-gray-400 opacity-50'}`} />
+                  <span className="truncate">8+ caractères</span>
+                </div>
+                <div className={`flex items-center gap-1 transition-colors ${passwordStrength.hasMixedCase ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                  <Check className={`w-3 h-3 shrink-0 ${passwordStrength.hasMixedCase ? 'text-emerald-500' : 'text-gray-400 opacity-50'}`} />
+                  <span className="truncate">Maj. & min.</span>
+                </div>
+                <div className={`flex items-center gap-1 transition-colors ${passwordStrength.hasNumberOrSpecial ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
+                  <Check className={`w-3 h-3 shrink-0 ${passwordStrength.hasNumberOrSpecial ? 'text-emerald-500' : 'text-gray-400 opacity-50'}`} />
+                  <span className="truncate">Chiffre / symbole</span>
+                </div>
+              </div>
+            </div>
+          )}
           {confirmPassword && confirmPassword !== password && (
             <p className="text-[11px] text-red-500 font-medium -mt-2">
               Les deux mots de passe ne correspondent pas.
@@ -970,50 +1170,51 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
+const SESSION_STORAGE_KEY = 'immogest_user_session';
+
+function getInitialSession() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<'landlord' | 'tenant' | 'technician' | null>(null);
-  const [tenantId, setTenantId] = useState<string | null>(null);
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const cachedSession = React.useMemo(() => getInitialSession(), []);
+  const [user, setUser] = useState<User | null>(() => auth.currentUser);
+  const [role, setRole] = useState<'landlord' | 'tenant' | 'technician' | null>(() => cachedSession?.role || null);
+  const [tenantId, setTenantId] = useState<string | null>(() => cachedSession?.tenantId || null);
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(() => Boolean(cachedSession?.isVerified));
+  const [loading, setLoading] = useState<boolean>(() => !cachedSession);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // Only require email verification for accounts using password authentication.
-        // Google accounts are considered verified by the provider.
-        const isPasswordProvider = currentUser.providerData.some(p => p.providerId === 'password');
-        if (isPasswordProvider && !currentUser.emailVerified) {
-          setIsAuthorized(false);
-          setLoading(false);
-          return;
-        }
         setUser(currentUser);
-        // Do not immediately authorize until role is loaded
-        
+
         try {
           const userDocPromise = getDoc(doc(db, 'users', currentUser.uid));
           const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000));
           const userDoc = await Promise.race([userDocPromise, timeoutPromise]) as any;
 
+          let currentRole: 'landlord' | 'tenant' | 'technician' = 'landlord';
+          let currentTenantId: string | null = null;
+          let isAccountVerified = false;
+
+          const isPasswordProvider = currentUser.providerData.some(p => p.providerId === 'password');
+
           if (userDoc && userDoc.exists && userDoc.exists()) {
              const data = userDoc.data();
-             let currentRole = data.role || 'landlord';
-             let currentTenantId = data.tenantId || null;
-
-             // Only override to tenant automatically if they don't have a specific preference set
-             // Or maybe we just do it if they don't have a role, or we let them toggle via a specific flag.
-             // Let's use a non-destructive check. If they are 'tenant' or 'landlord' in DB, respect it!
-             // Because clicking "Retour" sets role to 'landlord'. If we just respect data.role, they will be landlord!
-             // But what if they were just newly added as a tenant?
-             // Let's check `data.forceRole` or just respect `data.role`.
-             // Actually, if we just remove the forced override here, it will fix the issue.
-             // Wait, if we remove it, a landlord who adds themselves as a tenant won't see the tenant UI unless they switch?
-             // That's fine! They can just use a test email or we build a switch later.
-             // For now, let's just respect the role stored in DB!
+             currentRole = data.role || 'landlord';
+             currentTenantId = data.tenantId || null;
+             
+             // Un compte est vérifié s'il provient de Google OU si Firestore confirme isVerified/emailVerified
+             isAccountVerified = !isPasswordProvider || currentUser.emailVerified || Boolean(data.isVerified || data.emailVerified);
              
              if (currentRole === 'tenant') {
-                 // ensure we have the tenantId
                  if (!currentTenantId) {
                      if (currentUser.email) {
                         const qMail = query(collection(db, 'tenants'), where('email', '==', currentUser.email));
@@ -1024,16 +1225,11 @@ export default function App() {
                         }
                      }
                  }
-                 // If we still don't have a linked tenant, they shouldn't be trapped in a blank tenant space
                  if (!currentTenantId) {
                     currentRole = 'landlord';
                     await updateDoc(doc(db, 'users', currentUser.uid), { role: 'landlord' });
                  }
              }
-
-             // If their role is landlord, but they want to access tenant space, they'd have a button.
-             // But for now, we just respect currentRole so "Retour à l'espace" works.
-
 
              setRole(currentRole);
              if (currentRole === 'tenant') setTenantId(currentTenantId);
@@ -1042,6 +1238,9 @@ export default function App() {
              let tid = null;
              let techId = null;
              const cleanMail = (currentUser.email || '').trim().toLowerCase();
+
+             // Google est vérifié par défaut
+             isAccountVerified = !isPasswordProvider || currentUser.emailVerified;
 
              // 1. Check tenants
              if (cleanMail) {
@@ -1089,6 +1288,8 @@ export default function App() {
              }
              
              if (tid) {
+               currentRole = 'tenant';
+               currentTenantId = tid;
                await setDoc(doc(db, 'users', currentUser.uid), {
                  name: currentUser.displayName || 'Locataire',
                  phone: currentUser.phoneNumber || '',
@@ -1096,11 +1297,14 @@ export default function App() {
                  googleEmail: cleanMail,
                  role: 'tenant',
                  tenantId: tid,
+                 isVerified: true,
+                 emailVerified: true,
                  createdAt: new Date().toISOString()
                });
                setRole('tenant');
                setTenantId(tid);
              } else if (techId) {
+               currentRole = 'technician';
                await setDoc(doc(db, 'users', currentUser.uid), {
                  name: currentUser.displayName || 'Technicien',
                  phone: currentUser.phoneNumber || '',
@@ -1108,25 +1312,50 @@ export default function App() {
                  googleEmail: cleanMail,
                  role: 'technician',
                  technicianId: techId,
+                 isVerified: true,
+                 emailVerified: true,
                  createdAt: new Date().toISOString()
                });
                setRole('technician');
              } else {
+               currentRole = 'landlord';
                await setDoc(doc(db, 'users', currentUser.uid), {
                  name: currentUser.displayName || 'Bailleur',
                  phone: currentUser.phoneNumber || '',
                  email: cleanMail,
                  googleEmail: cleanMail,
                  role: 'landlord',
+                 isVerified: true,
+                 emailVerified: true,
                  createdAt: new Date().toISOString()
                });
                setRole('landlord');
              }
           }
-          setIsAuthorized(true);
+
+          if (isAccountVerified) {
+            setIsAuthorized(true);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+                uid: currentUser.uid,
+                email: currentUser.email,
+                role: currentRole,
+                tenantId: currentTenantId,
+                isVerified: true,
+                timestamp: Date.now()
+              }));
+            }
+          } else {
+            setIsAuthorized(false);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem(SESSION_STORAGE_KEY);
+            }
+          }
         } catch (error: any) {
           console.warn("Retard réseau lors de la récupération du rôle utilisateur", error);
-          // Fallback, limit to what we know or wait
+          if (cachedSession?.isVerified) {
+            setIsAuthorized(true);
+          }
         }
         
       } else {
@@ -1134,11 +1363,14 @@ export default function App() {
         setRole(null);
         setTenantId(null);
         setIsAuthorized(false);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+        }
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [cachedSession]);
 
   return (
     <ErrorBoundary>

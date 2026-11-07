@@ -1,11 +1,28 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
+} from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Activer explicitement la persistance locale de session dans le stockage du navigateur
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence).catch((err) => {
+    console.warn("Persistance locale non supportée, repli vers persistance de session :", err);
+    setPersistence(auth, browserSessionPersistence).catch(() => {});
+  });
+}
+
 export const storage = getStorage(app);
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache()
@@ -70,6 +87,9 @@ export const loginWithGoogle = async () => {
 
 export const logout = async () => {
   try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('immogest_user_session');
+    }
     await signOut(auth);
   } catch (error) {
     console.error("Error signing out", error);

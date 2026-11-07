@@ -292,19 +292,15 @@ service cloud.firestore {
     }
 
     match /paymentProofs/{proofId} {
-      allow get: if true;
-      allow list: if isAuthenticated();
+      allow get, list: if true;
       allow create: if true;
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
     }
 
     match /payment_proofs/{proofId} {
-      allow get: if true;
-      allow list: if isAuthenticated();
+      allow get, list: if true;
       allow create: if true;
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow update, delete: if isAuthenticated();
     }
 
     match /subscription_invoices/{invoiceId} {

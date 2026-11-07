@@ -17,6 +17,7 @@ import {
   ChevronRight, 
   CheckCircle2, 
   Image as ImageIcon, 
+  FileText,
   FileCheck,
   Smartphone,
   MessageSquare,
@@ -30,6 +31,7 @@ import jsPDF from 'jspdf';
 import toast from 'react-hot-toast';
 import { normalizeEmail } from '../lib/identity';
 import { getWhatsAppShareUrl, getGmailComposeUrl, getMailtoUrl } from '../utils/phoneUtils';
+import { downloadProofFile } from '../services/storageService';
 
 export function TenantDetail() {
   const { id } = useParams();
@@ -81,9 +83,21 @@ export function TenantDetail() {
       setExpenses(data);
     }, (error) => { handleFirestoreError(error, OperationType.LIST, 'expenses'); });
 
-    // Payment proofs listener (captured by tenant)
-    const unsubProofs = onSnapshot(query(collection(db, 'paymentProofs'), where('tenantId', '==', id)), (snapshot) => {
-      const pData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Payment proofs listener (captured by tenant from unified payment_proofs)
+    const unsubProofs = onSnapshot(query(collection(db, 'payment_proofs'), where('tenantId', '==', id)), (snapshot) => {
+      const pData = snapshot.docs.map(d => {
+        const item: any = { id: d.id, ...d.data() };
+        if (!item.proofUrl && item.files && item.files.length > 0) {
+          item.proofUrl = item.files[0].url;
+        }
+        if (!item.type && item.paymentType) {
+          item.type = item.paymentType;
+        }
+        if (!item.method && item.paymentMethod) {
+          item.method = item.paymentMethod;
+        }
+        return item;
+      });
       pData.sort((a: any, b: any) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
       setProofs(pData);
     });
@@ -189,9 +203,13 @@ export function TenantDetail() {
       const expSnap = await getDocs(qExpenses);
       await Promise.all(expSnap.docs.map(d => deleteDoc(doc(db, 'expenses', d.id))));
 
-      const qProofs = query(collection(db, 'paymentProofs'), where('tenantId', '==', id));
-      const proofSnap = await getDocs(qProofs);
-      await Promise.all(proofSnap.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
+      const qProofs1 = query(collection(db, 'payment_proofs'), where('tenantId', '==', id));
+      const proofSnap1 = await getDocs(qProofs1);
+      await Promise.all(proofSnap1.docs.map(d => deleteDoc(doc(db, 'payment_proofs', d.id))));
+
+      const qProofs2 = query(collection(db, 'paymentProofs'), where('tenantId', '==', id));
+      const proofSnap2 = await getDocs(qProofs2);
+      await Promise.all(proofSnap2.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
 
       const qTerm = query(collection(db, 'termination_procedures'), where('tenantId', '==', id));
       const termSnap = await getDocs(qTerm);
@@ -268,11 +286,31 @@ export function TenantDetail() {
         }
       }
 
+      // Update both collections for total synchronization
+      await updateDoc(doc(db, 'payment_proofs', proof.id), {
+        status: 'Preuve acceptée',
+        verifiedAt: now,
+        verifiedBy: auth.currentUser?.uid || 'bailleur',
+        updatedAt: now
+      }).catch(() => {});
+
       await updateDoc(doc(db, 'paymentProofs', proof.id), {
         status: 'Confirmé',
         confirmedAt: now,
         confirmedBy: auth.currentUser?.uid || 'bailleur'
-      });
+      }).catch(() => {});
+
+      // Notify tenant
+      await addDoc(collection(db, 'notifications'), {
+        userId: tenant.userId || tenant.id,
+        tenantId: tenant.id,
+        landlordId: tenant.landlordId || auth.currentUser?.uid,
+        type: 'PAYMENT_PROOF_ACCEPTED',
+        title: 'Preuve de paiement validée',
+        message: `Votre preuve de paiement pour ${proof.type || 'Loyer'} (${proof.amount} $) a été validée par votre bailleur.`,
+        read: false,
+        createdAt: now
+      }).catch(() => {});
 
       toast.success("Paiement validé avec succès ! Quittance confirmée.");
     } catch (e) {
@@ -292,11 +330,17 @@ export function TenantDetail() {
 
       const matchingProof = proofs.find(p => p.paymentId === paymentId);
       if (matchingProof) {
+        await updateDoc(doc(db, 'payment_proofs', matchingProof.id), {
+          status: 'Preuve acceptée',
+          verifiedAt: now,
+          verifiedBy: auth.currentUser?.uid || 'bailleur'
+        }).catch(() => {});
+
         await updateDoc(doc(db, 'paymentProofs', matchingProof.id), {
           status: 'Confirmé',
           confirmedAt: now,
           confirmedBy: auth.currentUser?.uid || 'bailleur'
-        });
+        }).catch(() => {});
       }
 
       toast.success("Paiement confirmé avec succès !");
@@ -307,12 +351,39 @@ export function TenantDetail() {
   };
 
   const handleRejectProof = async (proofId: string) => {
+    if (!tenant) return;
+    const reason = window.prompt("Veuillez indiquer le motif du rejet de cette preuve :", "Justificatif non vérifiable ou non reçu");
+    if (!reason || !reason.trim()) return;
+
     try {
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, 'payment_proofs', proofId), {
+        status: 'Preuve rejetée',
+        rejectionReason: reason.trim(),
+        verifiedAt: now,
+        verifiedBy: auth.currentUser?.uid || 'bailleur',
+        updatedAt: now
+      }).catch(() => {});
+
       await updateDoc(doc(db, 'paymentProofs', proofId), {
         status: 'Rejeté',
-        updatedAt: new Date().toISOString()
-      });
-      toast.success("Preuve rejetée.");
+        rejectionReason: reason.trim(),
+        updatedAt: now
+      }).catch(() => {});
+
+      // Notify tenant
+      await addDoc(collection(db, 'notifications'), {
+        userId: tenant.userId || tenant.id,
+        tenantId: tenant.id,
+        landlordId: tenant.landlordId || auth.currentUser?.uid,
+        type: 'PAYMENT_PROOF_REJECTED',
+        title: 'Preuve de paiement rejetée',
+        message: `Votre justificatif de paiement a été rejeté. Motif : "${reason.trim()}".`,
+        read: false,
+        createdAt: now
+      }).catch(() => {});
+
+      toast.success("Preuve rejetée et locataire notifié.");
     } catch (e) {
       console.error(e);
       toast.error("Erreur lors du rejet.");
@@ -656,78 +727,109 @@ export function TenantDetail() {
               Aucune capture ou preuve transmise par ce locataire pour l'instant.
             </div>
           ) : (
-            proofs.map(proof => (
-              <div key={proof.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  {proof.proofUrl ? (
-                    <img 
-                      src={proof.proofUrl} 
-                      alt="Capture de preuve" 
-                      className="w-12 h-12 rounded-xl object-cover border border-gray-200 dark:border-gray-700 cursor-pointer shrink-0 hover:opacity-90"
-                      onClick={() => setSelectedProofPhoto(proof.proofUrl)}
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-400 flex items-center justify-center shrink-0">
-                      <ImageIcon className="w-5 h-5" />
-                    </div>
-                  )}
+            proofs.map(proof => {
+              const fileUrl = proof.proofUrl || (proof.files && proof.files[0]?.url) || '';
+              const isPdf = fileUrl.includes('.pdf') || fileUrl.startsWith('data:application/pdf') || (proof.files && proof.files[0]?.type?.includes('pdf'));
+              const fileName = (proof.files && proof.files[0]?.name) || `preuve_${proof.id || 'paiement'}`;
 
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
-                        {proof.type || 'Loyer'} • {proof.method || 'Mobile Money'}
-                      </p>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        proof.status === 'Confirmé' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
-                        proof.status === 'Rejeté' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' :
-                        'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
-                      }`}>
-                        {proof.status || 'En attente'}
-                      </span>
-                    </div>
+              return (
+                <div key={proof.id} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {fileUrl ? (
+                      isPdf ? (
+                        <div 
+                          onClick={() => setSelectedProofPhoto(fileUrl)}
+                          className="w-12 h-12 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 flex flex-col items-center justify-center cursor-pointer shrink-0 hover:scale-105 transition-transform"
+                          title="Cliquez pour examiner le PDF"
+                        >
+                          <FileText className="w-5 h-5" />
+                          <span className="text-[9px] font-bold uppercase tracking-tight">PDF</span>
+                        </div>
+                      ) : (
+                        <img 
+                          src={fileUrl} 
+                          alt="Capture de preuve" 
+                          className="w-12 h-12 rounded-xl object-cover border border-gray-200 dark:border-gray-700 cursor-pointer shrink-0 hover:opacity-90"
+                          onClick={() => setSelectedProofPhoto(fileUrl)}
+                        />
+                      )
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-400 flex items-center justify-center shrink-0">
+                        <ImageIcon className="w-5 h-5" />
+                      </div>
+                    )}
 
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Montant : <span className="font-bold text-gray-900 dark:text-white">{proof.amount} $</span> • Reçu le {new Date(proof.date || proof.createdAt).toLocaleDateString('fr-FR')}
-                    </p>
-                    {proof.notes && (
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 italic mt-0.5">
-                        "{proof.notes}"
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
+                          {proof.type || proof.paymentType || 'Loyer'} • {proof.method || proof.paymentMethod || 'Mobile Money'}
+                        </p>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          proof.status === 'Confirmé' || proof.status === 'Preuve acceptée' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                          proof.status === 'Rejeté' || proof.status === 'Preuve rejetée' ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' :
+                          'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                        }`}>
+                          {proof.status || 'En attente'}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Montant : <span className="font-bold text-gray-900 dark:text-white">{proof.amount} {proof.currency || '$'}</span> • Reçu le {new Date(proof.paymentDate || proof.date || proof.createdAt).toLocaleDateString('fr-FR')}
                       </p>
+                      {proof.rejectionReason && (
+                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5 font-medium">
+                          Motif de rejet : "{proof.rejectionReason}"
+                        </p>
+                      )}
+                      {(proof.notes || proof.comment) && (
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 italic mt-0.5">
+                          "{proof.notes || proof.comment}"
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700 justify-end">
+                    {fileUrl && (
+                      <>
+                        <button
+                          onClick={() => setSelectedProofPhoto(fileUrl)}
+                          className="px-2.5 py-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"
+                        >
+                          {isPdf ? 'Consulter PDF' : 'Agrandir'}
+                        </button>
+                        <button
+                          onClick={() => downloadProofFile(fileUrl, fileName)}
+                          className="p-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"
+                          title="Télécharger le fichier"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+
+                    {proof.status !== 'Confirmé' && proof.status !== 'Preuve acceptée' && (
+                      <button
+                        onClick={() => handleConfirmProof(proof)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Confirmer & Encaisser
+                      </button>
+                    )}
+
+                    {(proof.status === 'En attente' || proof.status === 'En attente de vérification') && (
+                      <button
+                        onClick={() => handleRejectProof(proof.id)}
+                        className="px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-900/40 transition-colors cursor-pointer"
+                      >
+                        Rejeter
+                      </button>
                     )}
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-gray-100 dark:border-gray-700 justify-end">
-                  {proof.proofUrl && (
-                    <button
-                      onClick={() => setSelectedProofPhoto(proof.proofUrl)}
-                      className="px-2.5 py-1 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-700"
-                    >
-                      Agrandir
-                    </button>
-                  )}
-
-                  {proof.status !== 'Confirmé' && (
-                    <button
-                      onClick={() => handleConfirmProof(proof)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Confirmer & Encaisser
-                    </button>
-                  )}
-
-                  {proof.status === 'En attente' && (
-                    <button
-                      onClick={() => handleRejectProof(proof.id)}
-                      className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-900/40 transition-colors"
-                    >
-                      Rejeter
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -877,11 +979,42 @@ export function TenantDetail() {
       )}
 
       {selectedProofPhoto && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center p-4 z-[60]" onClick={() => setSelectedProofPhoto(null)}>
-          <img src={selectedProofPhoto} alt="Preuve de paiement" className="max-w-full max-h-[90vh] object-contain rounded-xl" />
-          <button className="absolute top-4 right-4 text-white hover:text-gray-300 w-10 h-10 flex items-center justify-center bg-black/50 rounded-full">
-            <span className="text-xl font-bold">×</span>
-          </button>
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xs flex items-center justify-center p-4 z-[60]" onClick={(e) => { if (e.target === e.currentTarget) setSelectedProofPhoto(null); }}>
+          <div className="relative max-w-4xl w-full max-h-[92vh] flex flex-col items-center justify-center">
+            <div className="w-full flex items-center justify-between pb-3 text-white">
+              <span className="text-sm font-semibold">Justificatif de paiement</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadProofFile(selectedProofPhoto, 'preuve_paiement')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Télécharger</span>
+                </button>
+                <button
+                  onClick={() => setSelectedProofPhoto(null)}
+                  className="w-8 h-8 flex items-center justify-center bg-white/20 hover:bg-white/30 text-white rounded-lg transition cursor-pointer"
+                >
+                  <span className="text-xl font-bold">×</span>
+                </button>
+              </div>
+            </div>
+
+            {selectedProofPhoto.includes('.pdf') || selectedProofPhoto.startsWith('data:application/pdf') ? (
+              <iframe
+                src={selectedProofPhoto}
+                title="Document PDF"
+                className="w-full h-[80vh] rounded-xl border border-gray-700 bg-white"
+              />
+            ) : (
+              <img
+                src={selectedProofPhoto}
+                alt="Preuve de paiement"
+                className="max-w-full max-h-[82vh] object-contain rounded-xl shadow-2xl"
+              />
+            )}
+          </div>
         </div>
       )}
     </div>

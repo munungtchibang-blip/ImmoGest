@@ -83,10 +83,14 @@ export function Tenants() {
       const expSnap = await getDocs(qExpenses);
       await Promise.all(expSnap.docs.map(d => deleteDoc(doc(db, 'expenses', d.id))));
 
-      // 5. Delete payment proofs
-      const qProofs = query(collection(db, 'paymentProofs'), where('tenantId', '==', tenantToDelete));
-      const proofSnap = await getDocs(qProofs);
-      await Promise.all(proofSnap.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
+      // 5. Delete payment proofs from both collections
+      const qProofs1 = query(collection(db, 'payment_proofs'), where('tenantId', '==', tenantToDelete));
+      const proofSnap1 = await getDocs(qProofs1);
+      await Promise.all(proofSnap1.docs.map(d => deleteDoc(doc(db, 'payment_proofs', d.id))));
+
+      const qProofs2 = query(collection(db, 'paymentProofs'), where('tenantId', '==', tenantToDelete));
+      const proofSnap2 = await getDocs(qProofs2);
+      await Promise.all(proofSnap2.docs.map(d => deleteDoc(doc(db, 'paymentProofs', d.id))));
 
       // 6. Delete termination procedures
       const qTerm = query(collection(db, 'termination_procedures'), where('tenantId', '==', tenantToDelete));

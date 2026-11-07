@@ -14,9 +14,9 @@ import {
   ShieldCheck, 
   Info
 } from 'lucide-react';
-import { collection, addDoc, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { uploadPaymentProofFile, formatFileSize, validateProofFile } from '../services/storageService';
+import { uploadPaymentProofFile, formatFileSize, validateProofFile, downloadProofFile } from '../services/storageService';
 import toast from 'react-hot-toast';
 
 export interface PaymentProof {
@@ -25,10 +25,13 @@ export interface PaymentProof {
   tenantName: string;
   tenantEmail?: string;
   tenantPhone?: string;
+  tenantUserId?: string;
   landlordId: string;
   propertyId?: string;
   propertyName?: string;
   unitNumber?: string;
+  contractId?: string;
+  paymentId?: string | null;
   paymentType: 'Loyer' | 'Caution' | 'Charges' | 'Réparation' | 'Autre';
   amount: number;
   currency: 'USD' | 'CDF';
@@ -41,10 +44,20 @@ export interface PaymentProof {
     name: string;
     size: number;
     type: string;
+    storagePath?: string;
   }>;
+  proofUrl?: string;
+  fileCount?: number;
   status: 'En attente de vérification' | 'En cours de vérification' | 'Preuve acceptée' | 'Preuve rejetée' | 'Informations complémentaires demandées';
   rejectionReason?: string;
   additionalInfoRequest?: string;
+  statusHistory?: Array<{
+    fromStatus: string;
+    toStatus: string;
+    changedBy: string;
+    changedAt: string;
+    reason?: string;
+  }>;
   verifiedAt?: string;
   verifiedBy?: string;
   createdAt: string;
@@ -57,10 +70,12 @@ interface PaymentProofUploadProps {
     name: string;
     email?: string;
     phone?: string;
+    userId?: string;
     landlordId: string;
     propertyId?: string;
     propertyName?: string;
     unitNumber?: string;
+    contractId?: string;
     rentAmount?: number;
     currency?: 'USD' | 'CDF';
   };
@@ -71,7 +86,12 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
   const [proofs, setProofs] = useState<PaymentProof[]>([]);
   const [loading, setLoading] = useState(Boolean(tenant.id));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showFormModal, setShowFormModal] = useState(false);
+
+  // Tenant rent dues and payment linkages
+  const [tenantPayments, setTenantPayments] = useState<any[]>([]);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string>('custom');
 
   // Form states
   const [paymentType, setPaymentType] = useState<PaymentProof['paymentType']>('Loyer');
@@ -87,7 +107,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
   // Preview lightbox modal state
   const [activePreviewDoc, setActivePreviewDoc] = useState<{ url: string; name: string; type: string } | null>(null);
 
-  // Real-time listener for tenant's payment proofs
+  // Real-time listener for tenant's payment proofs & pending payments
   useEffect(() => {
     if (!tenant.id) {
       return;
@@ -116,11 +136,44 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
       }
     );
 
-    return () => unsubscribe();
+    // Query tenant payments to link with proofs
+    const qPayments = query(
+      collection(db, 'payments'),
+      where('tenantId', '==', tenant.id)
+    );
+    const unsubPayments = onSnapshot(
+      qPayments,
+      (snap) => {
+        const loadedPays = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        loadedPays.sort((a: any, b: any) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
+        setTenantPayments(loadedPays);
+      },
+      (err) => console.warn('Erreur chargement paiements locataire:', err)
+    );
+
+    return () => {
+      unsubscribe();
+      unsubPayments();
+    };
   }, [tenant.id]);
 
-  // Handle file selections
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelectPayment = (payId: string) => {
+    setSelectedPaymentId(payId);
+    if (payId === 'custom') {
+      setAmount(tenant.rentAmount ? String(tenant.rentAmount) : '');
+      setPaymentType('Loyer');
+      return;
+    }
+    const target = tenantPayments.find(p => p.id === payId);
+    if (target) {
+      if (target.amount) setAmount(String(target.amount));
+      if (target.currency) setCurrency(target.currency);
+      if (target.type) setPaymentType(target.type);
+    }
+  };
+
+  // Handle file selections with binary signature validation
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const filesArray = Array.from(e.target.files);
 
@@ -128,18 +181,18 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
     const newPreviews: Array<{ name: string; size: number; type: string; previewUrl?: string }> = [];
 
     for (const file of filesArray) {
-      const check = validateProofFile(file);
+      const check = await validateProofFile(file);
       if (!check.valid) {
         toast.error(check.error || `Fichier ${file.name} invalide.`);
         continue;
       }
       validNewFiles.push(file);
 
-      const isImg = file.type.startsWith('image/');
+      const isImg = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(file.name);
       newPreviews.push({
         name: file.name,
         size: file.size,
-        type: file.type,
+        type: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
         previewUrl: isImg ? URL.createObjectURL(file) : undefined
       });
     }
@@ -160,6 +213,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
   };
 
   const resetForm = () => {
+    setSelectedPaymentId('custom');
     setPaymentType('Loyer');
     setAmount(tenant.rentAmount ? String(tenant.rentAmount) : '');
     setCurrency(tenant.currency || 'USD');
@@ -169,6 +223,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
     setComment('');
     setSelectedFiles([]);
     setFilePreviews([]);
+    setUploadProgress(null);
     setShowFormModal(false);
   };
 
@@ -189,33 +244,42 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
     }
 
     setIsSubmitting(true);
-    const toastId = toast.loading('Envoi de votre preuve de paiement...');
+    setUploadProgress(5);
+    const toastId = toast.loading('Transmission sécurisée de votre preuve...');
 
     try {
-      // 1. Upload files
+      // 1. Upload files with progress callback
       const uploadedFiles = [];
-      for (const file of selectedFiles) {
-        const res = await uploadPaymentProofFile(file, tenant.id);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const res = await uploadPaymentProofFile(file, tenant.id, (pct) => {
+          setUploadProgress(pct);
+        });
         uploadedFiles.push({
           url: res.url,
           name: res.name,
           size: res.size,
-          type: res.type
+          type: res.type,
+          storagePath: res.storagePath
         });
       }
 
+      setUploadProgress(95);
       const nowIso = new Date().toISOString();
 
-      // 2. Save payment proof document
+      // 2. Save payment proof document with full metadata and status history
       const proofPayload = {
         tenantId: tenant.id,
         tenantName: tenant.name || 'Locataire',
         tenantEmail: tenant.email || '',
         tenantPhone: tenant.phone || '',
+        tenantUserId: tenant.userId || '',
         landlordId: tenant.landlordId || '',
         propertyId: tenant.propertyId || '',
         propertyName: tenant.propertyName || 'Bien locatif',
         unitNumber: tenant.unitNumber || '',
+        contractId: tenant.contractId || '',
+        paymentId: selectedPaymentId && selectedPaymentId !== 'custom' ? selectedPaymentId : null,
         paymentType,
         amount: parseFloat(amount),
         currency,
@@ -224,22 +288,47 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
         transactionReference: transactionReference.trim(),
         comment: comment.trim(),
         files: uploadedFiles,
+        proofUrl: uploadedFiles[0]?.url || '',
+        fileCount: uploadedFiles.length,
         status: 'En attente de vérification',
+        statusHistory: [
+          {
+            fromStatus: 'Nouveau',
+            toStatus: 'En attente de vérification',
+            changedBy: tenant.name || 'Locataire',
+            changedAt: nowIso,
+            reason: 'Transmission initiale du justificatif de paiement'
+          }
+        ],
         createdAt: nowIso,
         updatedAt: nowIso
       };
 
-      await addDoc(collection(db, 'payment_proofs'), proofPayload);
+      const proofDocRef = await addDoc(collection(db, 'payment_proofs'), proofPayload);
 
-      // 3. Notify landlord
+      // If linked to an existing payment, update that payment with the proof ID
+      if (selectedPaymentId && selectedPaymentId !== 'custom') {
+        try {
+          await updateDoc(doc(db, 'payments', selectedPaymentId), {
+            proofId: proofDocRef.id,
+            proofUrl: uploadedFiles[0]?.url || '',
+            updatedAt: nowIso
+          });
+        } catch (linkErr) {
+          console.warn("Could not link proof to payment:", linkErr);
+        }
+      }
+
+      // 3. Notify landlord with both userId and landlordId for notification query compatibility
       if (tenant.landlordId) {
         try {
           await addDoc(collection(db, 'notifications'), {
+            userId: tenant.landlordId,
             landlordId: tenant.landlordId,
             tenantId: tenant.id,
             type: 'PAYMENT_PROOF_SUBMITTED',
             title: 'Nouvelle preuve de paiement reçue',
-            message: `${tenant.name} a transmis une preuve de ${amount} ${currency} pour ${paymentType.toLowerCase()} (Réf: ${transactionReference.trim()}).`,
+            message: `${tenant.name} a transmis un justificatif de paiement de ${amount} ${currency} pour ${paymentType.toLowerCase()} (${paymentMethod}, Réf: ${transactionReference.trim()}).`,
             read: false,
             createdAt: nowIso
           });
@@ -248,6 +337,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
         }
       }
 
+      setUploadProgress(100);
       toast.success('Preuve transmise avec succès ! En attente de vérification par votre bailleur.', { id: toastId });
       resetForm();
       if (onProofSubmitted) onProofSubmitted();
@@ -256,6 +346,7 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
       toast.error(err.message || 'Échec de la transmission. Veuillez réessayer.', { id: toastId });
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -473,6 +564,34 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
 
             {/* Modal Scrollable Body */}
             <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Sélection du loyer ou paiement concerné */}
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                  Paiement ou échéance de loyer concerné
+                </label>
+                <select
+                  value={selectedPaymentId}
+                  onChange={(e) => handleSelectPayment(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                >
+                  <option value="custom">Nouveau versement ou paiement libre</option>
+                  {tenantPayments.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.type || 'Loyer'} - {p.amount} {p.currency || 'USD'} ({p.date ? new Date(p.date).toLocaleDateString('fr-FR') : 'Échéance'}) [{p.status || 'En attente'}]
+                    </option>
+                  ))}
+                </select>
+                {selectedPaymentId !== 'custom' ? (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                    ✓ Cette preuve sera directement rattachée à cette échéance et mettra à jour son statut dès validation.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Sélectionnez une échéance existante ou laissez « Paiement libre » pour un règlement spontané.
+                  </p>
+                )}
+              </div>
+
               {/* Type de paiement */}
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
@@ -600,17 +719,17 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
                     type="file"
                     id="proof-file-input"
                     multiple
-                    accept="image/jpeg,image/png,image/jpg,application/pdf"
+                    accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf"
                     onChange={handleFileChange}
                     className="hidden"
                   />
                   <label htmlFor="proof-file-input" className="cursor-pointer block">
                     <Upload className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto mb-2" />
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                      Cliquez pour sélectionner un fichier ou une photo
+                      Cliquez pour sélectionner un fichier ou prendre une photo
                     </span>
                     <span className="block text-xs text-slate-500 mt-1">
-                      Formats autorisés : JPG, PNG, PDF (max 10 Mo)
+                      Formats autorisés : JPG, PNG, WEBP, PDF (max 10 Mo)
                     </span>
                   </label>
                 </div>
@@ -644,12 +763,31 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
                         <button
                           type="button"
                           onClick={() => removeFile(idx)}
-                          className="p-1 text-slate-400 hover:text-rose-500 rounded"
+                          className="p-1 text-slate-400 hover:text-rose-500 rounded cursor-pointer"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Live Upload Progress Indicator */}
+                {uploadProgress !== null && (
+                  <div className="mt-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-1.5 animate-in fade-in">
+                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                      <span className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+                        Transmission sécurisée en cours...
+                      </span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-emerald-200 dark:bg-emerald-900 overflow-hidden">
+                      <div 
+                        className="h-full bg-emerald-600 rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -660,19 +798,19 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
                   type="button"
                   onClick={resetForm}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium shadow-md shadow-emerald-600/20 transition hover:scale-[1.01]"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium shadow-md shadow-emerald-600/20 transition hover:scale-[1.01] cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Transmission...
+                      Transmission ({uploadProgress || 0}%)...
                     </>
                   ) : (
                     <>
@@ -696,19 +834,19 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
                 {activePreviewDoc.name}
               </span>
               <div className="flex items-center gap-2">
-                <a
-                  href={activePreviewDoc.url}
-                  download={activePreviewDoc.name}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
-                  title="Télécharger"
+                <button
+                  type="button"
+                  onClick={() => downloadProofFile(activePreviewDoc.url, activePreviewDoc.name)}
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition cursor-pointer flex items-center gap-1.5 text-xs"
+                  title="Télécharger le fichier"
                 >
                   <Download className="w-4 h-4" />
-                </a>
+                  <span className="hidden sm:inline">Télécharger</span>
+                </button>
                 <button
+                  type="button"
                   onClick={() => setActivePreviewDoc(null)}
-                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition"
+                  className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>

@@ -494,6 +494,42 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["landlordId", "procedureType", "reason", "status", "createdAt"]
+    },
+    "PaymentProof": {
+      "title": "PaymentProof",
+      "description": "Represents payment proofs, transaction receipts, bank slips, and mobile money screenshots transmitted by tenants.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string" },
+        "tenantName": { "type": "string" },
+        "tenantEmail": { "type": "string" },
+        "tenantPhone": { "type": "string" },
+        "landlordId": { "type": "string" },
+        "propertyId": { "type": "string" },
+        "propertyName": { "type": "string" },
+        "unitNumber": { "type": "string" },
+        "paymentType": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "paymentDate": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "transactionReference": { "type": "string" },
+        "comment": { "type": "string" },
+        "files": { "type": "array" },
+        "proofUrl": { "type": "string" },
+        "status": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "additionalInfoRequest": { "type": "string" },
+        "paymentId": { "type": "string" },
+        "contractId": { "type": "string" },
+        "tenantUserId": { "type": "string" },
+        "statusHistory": { "type": "array" },
+        "verifiedAt": { "type": "string" },
+        "verifiedBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["tenantId", "landlordId", "amount", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -610,6 +646,12 @@
         "$ref": "#/entities/TerminationProcedure"
       },
       "description": "Collection of lease notices, preavis, technician service terminations and closure records."
+    },
+    "/payment_proofs/{proofId}": {
+      "schema": {
+        "$ref": "#/entities/PaymentProof"
+      },
+      "description": "Collection of payment proofs transmitted by tenants."
     }
   }
 }
