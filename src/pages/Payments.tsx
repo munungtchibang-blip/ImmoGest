@@ -24,7 +24,7 @@ import { fr } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import { useSubscription } from '../context/SubscriptionContext';
 import { containerVariants, cardVariants } from '../lib/animations';
-import { LandlordPaymentProofs } from '../components/LandlordPaymentProofs';
+import { ProofApprovalDashboard } from '../components/ProofApprovalDashboard';
 import toast from 'react-hot-toast';
 import { 
   DEFAULT_CURRENCY_CONFIG, 
@@ -518,9 +518,9 @@ export function Payments() {
         </div>
       ) : activeTab === 'proofs' ? (
         auth.currentUser ? (
-          <LandlordPaymentProofs
+          <ProofApprovalDashboard
             landlordId={auth.currentUser.uid}
-            onPaymentCreated={() => setActiveTab('all')}
+            onProofUpdated={() => {}}
           />
         ) : null
       ) : activeTab === 'unpaid' ? (

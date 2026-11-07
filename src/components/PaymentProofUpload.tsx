@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, 
   FileText, 
@@ -12,11 +12,23 @@ import {
   Download, 
   Plus, 
   ShieldCheck, 
-  Info
+  Info,
+  Layers,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Database
 } from 'lucide-react';
 import { collection, addDoc, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { uploadPaymentProofFile, formatFileSize, validateProofFile, downloadProofFile } from '../services/storageService';
+import { 
+  uploadPaymentProofFile, 
+  formatFileSize, 
+  validateProofFile, 
+  downloadProofFile,
+  type UploadProgressDetails 
+} from '../services/storageService';
 import toast from 'react-hot-toast';
 
 export interface PaymentProof {
@@ -87,7 +99,17 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
   const [loading, setLoading] = useState(Boolean(tenant.id));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadDetails, setUploadDetails] = useState<UploadProgressDetails | null>(null);
+  const [uploadLogs, setUploadLogs] = useState<Array<{ timestamp: string; step: string; message: string; percentage: number }>>([]);
+  const [showLogTerminal, setShowLogTerminal] = useState(true);
+  const logsEndRef = useRef<HTMLDivElement>(null);
   const [showFormModal, setShowFormModal] = useState(false);
+
+  useEffect(() => {
+    if (showLogTerminal && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [uploadLogs, showLogTerminal]);
 
   // Tenant rent dues and payment linkages
   const [tenantPayments, setTenantPayments] = useState<any[]>([]);
@@ -224,7 +246,56 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
     setSelectedFiles([]);
     setFilePreviews([]);
     setUploadProgress(null);
+    setUploadDetails(null);
+    setUploadLogs([]);
     setShowFormModal(false);
+  };
+
+  const getStepInfo = (step?: UploadProgressDetails['step']) => {
+    switch (step) {
+      case 'validating':
+        return {
+          label: 'Étape 1/5 : Contrôle de sécurité & signature binaire',
+          badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+          icon: ShieldCheck,
+        };
+      case 'optimizing':
+        return {
+          label: 'Étape 2/5 : Optimisation & compression haute netteté',
+          badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+          icon: Sparkles,
+        };
+      case 'chunking':
+        return {
+          label: 'Étape 3/5 : Découpage par morceaux (128 Ko / fragment)',
+          badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+          icon: Layers,
+        };
+      case 'uploading':
+        return {
+          label: 'Étape 4/5 : Transfert et acheminement réseau sécurisé',
+          badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+          icon: Upload,
+        };
+      case 'persisting':
+        return {
+          label: 'Étape 5/5 : Sécurisation & enregistrement définitif',
+          badge: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+          icon: Database,
+        };
+      case 'completed':
+        return {
+          label: 'Transmission confirmée et enregistrée',
+          badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+          icon: CheckCircle2,
+        };
+      default:
+        return {
+          label: 'Initialisation de la transmission...',
+          badge: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+          icon: Clock,
+        };
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -245,16 +316,55 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
 
     setIsSubmitting(true);
     setUploadProgress(5);
+    const startTimestamp = new Date().toLocaleTimeString('fr-FR');
+    setUploadDetails({
+      percentage: 5,
+      step: 'validating',
+      message: `Initialisation de la transmission de ${selectedFiles.length} justificatif(s)...`,
+      timestamp: startTimestamp,
+      totalBytes: selectedFiles.reduce((acc, f) => acc + f.size, 0)
+    });
+    setUploadLogs([
+      {
+        timestamp: startTimestamp,
+        step: 'INIT',
+        message: `Démarrage de la transmission sécurisée (${selectedFiles.length} justificatif(s), ${formatFileSize(selectedFiles.reduce((acc, f) => acc + f.size, 0))})...`,
+        percentage: 5
+      }
+    ]);
+
     const toastId = toast.loading('Transmission sécurisée de votre preuve...');
 
     try {
-      // 1. Upload files with progress callback
+      // 1. Upload files with chunking and progress details
       const uploadedFiles = [];
-      for (let i = 0; i < selectedFiles.length; i++) {
+      const totalFiles = selectedFiles.length;
+
+      for (let i = 0; i < totalFiles; i++) {
         const file = selectedFiles[i];
-        const res = await uploadPaymentProofFile(file, tenant.id, (pct) => {
-          setUploadProgress(pct);
+        const fileNum = i + 1;
+
+        const res = await uploadPaymentProofFile(file, tenant.id, (pct, details) => {
+          // Weight upload percentage smoothly across multiple files (from 5% to 88%)
+          const fileBase = (i / totalFiles) * 80;
+          const fileShare = (pct / 100) * (80 / totalFiles);
+          const compositePct = Math.min(88, Math.max(5, Math.round(5 + fileBase + fileShare)));
+          setUploadProgress(compositePct);
+
+          if (details) {
+            setUploadDetails(details);
+            setUploadLogs((prev) => [
+              ...prev.slice(-18),
+              {
+                timestamp: details.timestamp,
+                step: details.step.toUpperCase(),
+                message: totalFiles > 1 ? `[Fichier ${fileNum}/${totalFiles}] ${details.message}` : details.message,
+                percentage: details.percentage
+              }
+            ]);
+          }
         });
+
         uploadedFiles.push({
           url: res.url,
           name: res.name,
@@ -264,8 +374,25 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
         });
       }
 
-      setUploadProgress(95);
+      setUploadProgress(92);
       const nowIso = new Date().toISOString();
+      const persistTime = new Date().toLocaleTimeString('fr-FR');
+
+      setUploadDetails({
+        percentage: 92,
+        step: 'persisting',
+        message: 'Enregistrement de la quittance et liaison automatique à votre bail...',
+        timestamp: persistTime,
+      });
+      setUploadLogs((prev) => [
+        ...prev.slice(-18),
+        {
+          timestamp: persistTime,
+          step: 'PERSISTING',
+          message: "Enregistrement de la quittance et de l'historique d'audit dans Firestore...",
+          percentage: 92
+        }
+      ]);
 
       // 2. Save payment proof document with full metadata and status history
       const proofPayload = {
@@ -337,16 +464,51 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
         }
       }
 
+      const finishTime = new Date().toLocaleTimeString('fr-FR');
       setUploadProgress(100);
+      setUploadDetails({
+        percentage: 100,
+        step: 'completed',
+        message: 'Preuve validée et enregistrée avec succès !',
+        timestamp: finishTime,
+      });
+      setUploadLogs((prev) => [
+        ...prev.slice(-18),
+        {
+          timestamp: finishTime,
+          step: 'COMPLETED',
+          message: 'Transmission terminée et confirmée par le serveur ImmoGest.',
+          percentage: 100
+        }
+      ]);
+
       toast.success('Preuve transmise avec succès ! En attente de vérification par votre bailleur.', { id: toastId });
+      
+      // Delay briefly so the tenant can see the green 100% checkmark and success state
+      await new Promise((r) => setTimeout(r, 650));
       resetForm();
       if (onProofSubmitted) onProofSubmitted();
     } catch (err: any) {
       console.error('Erreur transmission preuve:', err);
+      const errTime = new Date().toLocaleTimeString('fr-FR');
+      setUploadDetails({
+        percentage: uploadProgress || 0,
+        step: 'error',
+        message: err.message || 'Échec de transmission',
+        timestamp: errTime,
+      });
+      setUploadLogs((prev) => [
+        ...prev.slice(-18),
+        {
+          timestamp: errTime,
+          step: 'ERREUR',
+          message: `Échec : ${err.message || 'Erreur inconnue'}`,
+          percentage: uploadProgress || 0
+        }
+      ]);
       toast.error(err.message || 'Échec de la transmission. Veuillez réessayer.', { id: toastId });
     } finally {
       setIsSubmitting(false);
-      setUploadProgress(null);
     }
   };
 
@@ -772,21 +934,159 @@ export const PaymentProofUpload: React.FC<PaymentProofUploadProps> = ({ tenant, 
                   </div>
                 )}
 
-                {/* Live Upload Progress Indicator */}
+                {/* Live Upload Progress with Step Tracker, Chunk Indicators & Live Activity Log */}
                 {uploadProgress !== null && (
-                  <div className="mt-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-1.5 animate-in fade-in">
-                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                      <span className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
-                        Transmission sécurisée en cours...
-                      </span>
-                      <span>{uploadProgress}%</span>
+                  <div className="mt-4 p-4 rounded-xl bg-slate-900 border border-slate-800 text-white space-y-3 shadow-lg animate-in fade-in duration-200">
+                    {/* Step Header */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {(() => {
+                          const stepInfo = getStepInfo(uploadDetails?.step);
+                          const StepIcon = stepInfo.icon;
+                          return (
+                            <>
+                              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                                <StepIcon className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-xs font-semibold text-emerald-400 block truncate">
+                                  {stepInfo.label}
+                                </span>
+                                <span className="text-[11px] text-slate-400 block truncate">
+                                  {uploadDetails?.message || 'Transmission en cours...'}
+                                </span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {uploadDetails?.totalChunks && uploadDetails.totalChunks > 1 && (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-medium">
+                            Morceau {uploadDetails.currentChunk || 1}/{uploadDetails.totalChunks}
+                          </span>
+                        )}
+                        <span className="text-sm font-bold font-mono text-emerald-400">
+                          {uploadProgress}%
+                        </span>
+                      </div>
                     </div>
-                    <div className="w-full h-2 rounded-full bg-emerald-200 dark:bg-emerald-900 overflow-hidden">
+
+                    {/* Primary Progress Bar */}
+                    <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden relative">
                       <div 
-                        className="h-full bg-emerald-600 rounded-full transition-all duration-300 ease-out"
+                        className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400 rounded-full transition-all duration-300 ease-out shadow-sm shadow-emerald-500/50"
                         style={{ width: `${uploadProgress}%` }}
                       />
+                    </div>
+
+                    {/* Step Pills Visualization */}
+                    <div className="grid grid-cols-5 gap-1 pt-1">
+                      {[
+                        { id: 'validating', name: 'Contrôle' },
+                        { id: 'optimizing', name: 'Optimisation' },
+                        { id: 'chunking', name: 'Découpage' },
+                        { id: 'uploading', name: 'Transfert' },
+                        { id: 'persisting', name: 'Finalisation' }
+                      ].map((st, sIdx) => {
+                        const stepOrder = ['validating', 'optimizing', 'chunking', 'uploading', 'persisting', 'completed'];
+                        const currentIdx = stepOrder.indexOf(uploadDetails?.step || 'validating');
+                        const isDone = currentIdx > sIdx || uploadDetails?.step === 'completed';
+                        const isCurrent = currentIdx === sIdx;
+
+                        return (
+                          <div 
+                            key={st.id} 
+                            className={`text-center py-1 rounded text-[10px] font-medium transition-all ${
+                              isDone 
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                                : isCurrent 
+                                  ? 'bg-teal-500/30 text-teal-200 border border-teal-400 animate-pulse' 
+                                  : 'bg-slate-800/60 text-slate-500 border border-slate-800'
+                            }`}
+                          >
+                            {st.name}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Chunk Progress Segments if multiple chunks */}
+                    {uploadDetails?.totalChunks && uploadDetails.totalChunks > 1 && (
+                      <div className="pt-2 border-t border-slate-800/80">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                          <span className="flex items-center gap-1">
+                            <Layers className="w-3 h-3 text-purple-400" />
+                            Découpage séquentiel (128 Ko / morceau)
+                          </span>
+                          <span className="font-mono text-purple-300">
+                            {uploadDetails.currentChunk || 1} sur {uploadDetails.totalChunks} morceaux
+                          </span>
+                        </div>
+                        <div className="flex gap-1">
+                          {Array.from({ length: uploadDetails.totalChunks }).map((_, cIdx) => {
+                            const isCompletedChunk = (uploadDetails.currentChunk || 1) > cIdx + 1;
+                            const isCurrentChunk = (uploadDetails.currentChunk || 1) === cIdx + 1;
+                            return (
+                              <div 
+                                key={cIdx}
+                                className={`h-1.5 flex-1 rounded-sm transition-all ${
+                                  isCompletedChunk 
+                                    ? 'bg-purple-400' 
+                                    : isCurrentChunk 
+                                      ? 'bg-purple-500 animate-pulse' 
+                                      : 'bg-slate-800'
+                                }`}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Live Terminal / Activity Log Container */}
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <button
+                        type="button"
+                        onClick={() => setShowLogTerminal(!showLogTerminal)}
+                        className="w-full flex items-center justify-between text-[11px] text-slate-400 hover:text-slate-200 py-0.5 cursor-pointer transition"
+                      >
+                        <span className="flex items-center gap-1.5 font-mono">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping inline-block" />
+                          <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                          Journal de progression en direct ({uploadLogs.length})
+                        </span>
+                        <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                          {showLogTerminal ? 'Masquer' : 'Afficher'}
+                          {showLogTerminal ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </span>
+                      </button>
+
+                      {showLogTerminal && (
+                        <div className="mt-2 bg-black/60 rounded-lg p-2.5 max-h-32 overflow-y-auto font-mono text-[10px] space-y-1 border border-slate-800 text-slate-300 select-text">
+                          {uploadLogs.length === 0 ? (
+                            <div className="text-slate-500 italic">En attente des premières traces d'exécution...</div>
+                          ) : (
+                            uploadLogs.map((log, lIdx) => (
+                              <div key={lIdx} className="flex items-start gap-1.5 leading-relaxed">
+                                <span className="text-slate-500 shrink-0">[{log.timestamp}]</span>
+                                <span className={`shrink-0 px-1 py-0.2 rounded font-semibold text-[9px] ${
+                                  log.step === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' :
+                                  log.step === 'ERREUR' ? 'bg-rose-500/20 text-rose-400' :
+                                  log.step === 'CHUNKING' ? 'bg-purple-500/20 text-purple-300' :
+                                  log.step === 'OPTIMIZING' ? 'bg-amber-500/20 text-amber-300' :
+                                  'bg-slate-800 text-slate-300'
+                                }`}>
+                                  {log.step}
+                                </span>
+                                <span className="text-slate-300 break-words">{log.message}</span>
+                              </div>
+                            ))
+                          )}
+                          <div ref={logsEndRef} />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

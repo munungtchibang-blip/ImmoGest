@@ -307,6 +307,7 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
   const [proofFileType, setProofFileType] = useState<string>('');
   const [proofFileSize, setProofFileSize] = useState<number>(0);
   const [proofUploadProgress, setProofUploadProgress] = useState<number | null>(null);
+  const [proofUploadStatus, setProofUploadStatus] = useState<string>('');
   const [proofNote, setProofNote] = useState<string>('');
   const [paymentResult, setPaymentResult] = useState<string>('');
   const [failReason, setFailReason] = useState<string>('');
@@ -566,17 +567,25 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
       setProofFileType(isPdf ? 'application/pdf' : file.type || 'image/jpeg');
 
-      const uploaded = await uploadPaymentProofFile(file, tenant?.id || 'public', (pct) => {
+      const uploaded = await uploadPaymentProofFile(file, tenant?.id || 'public', (pct, details) => {
         setProofUploadProgress(pct);
+        if (details?.message) {
+          setProofUploadStatus(details.message);
+        }
       });
 
       setProofImage(uploaded.url);
       setProofUploadProgress(100);
-      setTimeout(() => setProofUploadProgress(null), 1000);
+      setProofUploadStatus('Preuve enregistrée avec succès.');
+      setTimeout(() => {
+        setProofUploadProgress(null);
+        setProofUploadStatus('');
+      }, 1500);
     } catch (err: any) {
       console.error("Erreur téléversement justificatif:", err);
       alert(err.message || "Impossible de téléverser ce justificatif.");
       setProofUploadProgress(null);
+      setProofUploadStatus('');
     }
   };
 
@@ -1712,8 +1721,8 @@ export function PublicPay({ tenantId: propTenantId }: { tenantId?: string }) {
                     {proofUploadProgress !== null && (
                       <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1.5 animate-in fade-in">
                         <div className="flex justify-between text-xs font-semibold text-emerald-800">
-                          <span>Téléversement et vérification...</span>
-                          <span>{proofUploadProgress}%</span>
+                          <span className="truncate max-w-[260px]">{proofUploadStatus || 'Téléversement et vérification...'}</span>
+                          <span className="shrink-0">{proofUploadProgress}%</span>
                         </div>
                         <div className="w-full h-2 rounded-full bg-emerald-200 overflow-hidden">
                           <div 
